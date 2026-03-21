@@ -6,8 +6,18 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const app = new Hono();
 
-// Admin credentials (in production, use proper auth)
-const ADMIN_PASSWORD = Deno.env.get('ADMIN_PASSWORD') || 'frameGameAdmin2026';
+// Admin credentials — KV override takes priority, then env var, then hardcoded fallback
+const ENV_ADMIN_PASSWORD = Deno.env.get('ADMIN_PASSWORD') || 'frameGameAdmin2026';
+
+async function getAdminPassword(): Promise<string> {
+  try {
+    const override = await kv.get('admin_password_override');
+    if (override && typeof override === 'object' && override.password) {
+      return override.password;
+    }
+  } catch (_) { /* fallback to env */ }
+  return ENV_ADMIN_PASSWORD;
+}
 
 // Supabase client for storage
 const supabase = createClient(
@@ -58,7 +68,7 @@ app.post("/make-server-a8ba6828/admin/login", async (c) => {
   try {
     const { password } = await c.req.json();
     
-    if (password === ADMIN_PASSWORD) {
+    if (password === await getAdminPassword()) {
       // Generate a simple token (in production, use JWT)
       const token = `admin_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       await kv.set(`admin_token:${token}`, { 
@@ -761,6 +771,40 @@ app.delete("/make-server-a8ba6828/admin/fonts/:fontId", async (c) => {
   } catch (error) {
     console.error("Error deleting font:", error);
     return c.json({ error: `Failed to delete font: ${error}` }, 500);
+  }
+});
+
+// ═══ CHANGE ADMIN PASSWORD ═══
+app.post("/make-server-a8ba6828/admin/change-password", async (c) => {
+  try {
+    const token = c.req.header('X-Admin-Token');
+    const isAdmin = await verifyAdmin(token);
+    if (!isAdmin) return c.json({ error: "Unauthorized" }, 401);
+
+    const { currentPassword, newPassword } = await c.req.json();
+
+    if (!currentPassword || !newPassword) {
+      return c.json({ error: "Both currentPassword and newPassword are required." }, 400);
+    }
+
+    if (newPassword.length < 8) {
+      return c.json({ error: "New password must be at least 8 characters." }, 400);
+    }
+
+    // Verify current password
+    const activePassword = await getAdminPassword();
+    if (currentPassword !== activePassword) {
+      return c.json({ error: "Current password is incorrect." }, 403);
+    }
+
+    // Store the new password as a KV override
+    await kv.set('admin_password_override', { password: newPassword, changedAt: new Date().toISOString() });
+
+    console.log("Admin password changed successfully.");
+    return c.json({ success: true, message: "Password changed successfully." });
+  } catch (error) {
+    console.error("Error changing admin password:", error);
+    return c.json({ error: `Failed to change password: ${error}` }, 500);
   }
 });
 

@@ -9,7 +9,8 @@ import {
   Layout,
   Eye,
   Home,
-  Type
+  Type,
+  Settings
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SubscribersTable } from '../components/admin/subscribers-table';
@@ -19,8 +20,9 @@ import { SectionManager } from '../components/admin/section-manager';
 import { UserPreview } from '../components/admin/user-preview';
 import { LandingPageEditor } from '../components/admin/landing-page-editor';
 import { FontManager } from '../components/admin/font-manager';
+import { SettingsPanel } from '../components/admin/settings-panel';
 
-type Tab = 'landing' | 'subscribers' | 'emails' | 'timelines' | 'sections' | 'preview' | 'fonts';
+type Tab = 'landing' | 'subscribers' | 'emails' | 'timelines' | 'sections' | 'preview' | 'fonts' | 'settings';
 
 export function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('sections');
@@ -107,7 +109,7 @@ export function AdminDashboard() {
           transition={{ delay: 0.2 }}
           className="bg-white rounded-3xl shadow-2xl p-2 mb-6"
         >
-          <div className="grid grid-cols-2 md:grid-cols-7 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-8 gap-2">
             <TabButton
               active={activeTab === 'sections'}
               onClick={() => setActiveTab('sections')}
@@ -150,6 +152,12 @@ export function AdminDashboard() {
               icon={Type}
               label="Fonts"
             />
+            <TabButton
+              active={activeTab === 'settings'}
+              onClick={() => setActiveTab('settings')}
+              icon={Settings}
+              label="Settings"
+            />
           </div>
         </motion.div>
 
@@ -166,6 +174,7 @@ export function AdminDashboard() {
           {activeTab === 'timelines' && <TimelineEditor />}
           {activeTab === 'landing' && <LandingPageEditor />}
           {activeTab === 'fonts' && <FontManager />}
+          {activeTab === 'settings' && <SettingsPanel />}
         </motion.div>
       </div>
     </div>
