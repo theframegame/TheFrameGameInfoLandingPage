@@ -265,32 +265,52 @@ export function LandingPageEditor() {
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-3xl shadow-2xl p-6">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-2xl md:text-3xl font-bold" style={{ fontFamily: 'Fredoka, sans-serif' }}>
-              <span className="bg-gradient-to-r from-orange-500 to-pink-500 bg-clip-text text-transparent">Landing Page Editor</span>
-            </h2>
-            <p className="text-gray-500 mt-1 text-sm" style={{ fontFamily: 'Comic Neue, cursive' }}>Customize every part of your home page</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={resetToDefaults} className="text-gray-600"><RotateCcw className="w-4 h-4 mr-2" /> Reset</Button>
-            <Button onClick={() => setShowPreview(!showPreview)} variant="outline">{showPreview ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}{showPreview ? 'Hide Preview' : 'Show Preview'}</Button>
-            <Button onClick={saveConfig} disabled={isSaving} className="bg-gradient-to-r from-green-600 to-emerald-600 text-white"><Save className="w-4 h-4 mr-2" /> {isSaving ? 'Saving...' : 'Publish'}</Button>
-          </div>
+    <div style={{ width: '1400px', margin: '0 auto', padding: '24px' }}>
+      {/* Header */}
+      <div style={{ width: '100%', backgroundColor: 'white', borderRadius: '16px', padding: '20px', marginBottom: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+        <h2 style={{ fontSize: '24px', fontWeight: 'bold', fontFamily: 'Fredoka, sans-serif', background: 'linear-gradient(to right, #f97316, #ec4899)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', marginBottom: '8px' }}>
+          Landing Page Editor
+        </h2>
+        <p style={{ fontSize: '12px', color: '#6b7280', fontFamily: 'Comic Neue, cursive', marginBottom: '16px' }}>Customize every part of your home page</p>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <Button variant="outline" onClick={resetToDefaults} style={{ height: '32px', fontSize: '12px' }}><RotateCcw className="w-3 h-3 mr-1" /> Reset</Button>
+          <Button onClick={() => setShowPreview(!showPreview)} variant="outline" style={{ height: '32px', fontSize: '12px' }}>{showPreview ? <EyeOff className="w-3 h-3 mr-1" /> : <Eye className="w-3 h-3 mr-1" />}{showPreview ? 'Hide' : 'Show'}</Button>
+          <Button onClick={saveConfig} disabled={isSaving} style={{ height: '32px', fontSize: '12px', background: 'linear-gradient(to right, #16a34a, #059669)', color: 'white' }}><Save className="w-3 h-3 mr-1" /> {isSaving ? 'Saving...' : 'Publish'}</Button>
         </div>
       </div>
-      <div className="flex flex-col lg:flex-row gap-6">
-        <div className="lg:w-[480px] xl:w-[520px] flex-shrink-0 space-y-4">
-          <div className="bg-white rounded-2xl shadow-xl p-2 flex flex-wrap gap-1">
-            {PANELS.map(p => (
-              <button key={p.key} onClick={() => setActivePanel(p.key)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all ${activePanel === p.key ? 'bg-gradient-to-r from-orange-500 to-pink-500 text-white shadow' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}
-                style={{ fontFamily: 'Fredoka, sans-serif' }}><span>{p.icon}</span> {p.label}</button>
-            ))}
-          </div>
-          <div className="bg-white rounded-2xl shadow-xl p-5 space-y-5 max-h-[calc(100vh-380px)] overflow-y-auto">
+
+      {/* Panel Tabs */}
+      <div style={{ width: '100%', backgroundColor: 'white', borderRadius: '16px', padding: '8px', marginBottom: '16px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+          {PANELS.map(p => (
+            <button key={p.key} onClick={() => setActivePanel(p.key)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                fontSize: '11px',
+                fontWeight: 'bold',
+                fontFamily: 'Fredoka, sans-serif',
+                border: 'none',
+                cursor: 'pointer',
+                background: activePanel === p.key ? 'linear-gradient(to right, #f97316, #ec4899)' : '#f9fafb',
+                color: activePanel === p.key ? 'white' : '#4b5563',
+                boxShadow: activePanel === p.key ? '0 2px 4px rgba(0,0,0,0.1)' : 'none'
+              }}
+            >
+              <span style={{ fontSize: '14px' }}>{p.icon}</span> {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Two Column Layout - Fixed Width */}
+      <div style={{ display: 'flex', gap: '16px', width: '100%' }}>
+        {/* Editor Panel - Fixed 680px */}
+        <div style={{ width: '680px', flexShrink: 0 }}>
+          <div style={{ width: '100%', height: '600px', backgroundColor: 'white', borderRadius: '16px', padding: '20px', overflowY: 'auto', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
             {activePanel === 'hero' && <HeroPanel hero={config.hero} textStyles={config.textStyles} onChange={updateHero} onTextStyleChange={updateTextStyle} onImageUpload={handleImageUpload} isUploading={isUploading} />}
             {activePanel === 'signup' && <SignupPanel signup={config.signup} textStyles={config.textStyles} onChange={updateSignup} onTextStyleChange={updateTextStyle} />}
             {activePanel === 'user-types' && <UserTypesPanel userTypes={config.userTypes} textStyles={config.textStyles} onChange={updateUserType} onTextStyleChange={updateTextStyle} onAdd={() => setConfig(prev => ({ ...prev, userTypes: [...prev.userTypes, { type: `custom-${Date.now()}`, label: 'New Type', description: 'Description', gradient: 'from-gray-400 to-gray-600', icon: '\u2B50', enabled: true }] }))} onRemove={(i) => setConfig(prev => ({ ...prev, userTypes: prev.userTypes.filter((_, idx) => idx !== i) }))} onReorder={(from, to) => { setConfig(prev => { const arr = [...prev.userTypes]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item); return { ...prev, userTypes: arr }; }); }} />}
@@ -299,14 +319,22 @@ export function LandingPageEditor() {
             {activePanel === 'general' && <GeneralPanel config={config} onChange={(p) => setConfig(prev => ({ ...prev, ...p }))} onTextStyleChange={updateTextStyle} />}
           </div>
         </div>
+
+        {/* Preview Panel - Fixed 680px */}
         {showPreview && (
-          <div className="flex-1 min-w-0">
-            <div className="bg-gray-900 rounded-2xl shadow-xl overflow-hidden" style={{ minHeight: '600px', maxHeight: 'calc(100vh - 300px)' }}>
-              <div className="bg-gray-800 px-4 py-2 flex items-center gap-2">
-                <div className="flex gap-1.5"><div className="w-3 h-3 rounded-full bg-red-400" /><div className="w-3 h-3 rounded-full bg-yellow-400" /><div className="w-3 h-3 rounded-full bg-green-400" /></div>
-                <span className="text-gray-400 text-[10px] font-mono flex-1 text-center">theframegame.com</span>
+          <div style={{ width: '680px', flexShrink: 0 }}>
+            <div style={{ width: '100%', height: '600px', backgroundColor: '#111827', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+              <div style={{ width: '100%', height: '40px', backgroundColor: '#1f2937', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#f87171' }} />
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#fbbf24' }} />
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#4ade80' }} />
+                </div>
+                <span style={{ fontSize: '10px', fontFamily: 'monospace', color: '#9ca3af', flex: 1, textAlign: 'center' }}>theframegame.com</span>
               </div>
-              <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 340px)' }}><LandingPreview config={config} /></div>
+              <div style={{ width: '100%', height: '560px', overflowY: 'auto' }}>
+                <LandingPreview config={config} />
+              </div>
             </div>
           </div>
         )}

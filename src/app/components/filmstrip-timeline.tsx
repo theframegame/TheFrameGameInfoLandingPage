@@ -33,72 +33,13 @@ const SECTION_ICONS: Record<string, string> = {
 
 // Tiny thumbnail for each section type
 function ClipThumbnail({ section, color }: { section: string; color: typeof CLIP_COLORS[0] }) {
-  switch (section) {
-    case 'studio-demo':
-      return (
-        <div className="w-full h-full bg-gray-800 flex flex-col">
-          <div className="flex-1 bg-gray-700 m-px rounded-sm flex items-center justify-center">
-            <div className="text-[7px]">🎬</div>
-          </div>
-          <div className="h-[3px] flex gap-px mx-px mb-px">
-            <div className="flex-[3] bg-blue-500/70 rounded-sm" />
-            <div className="flex-[2] bg-blue-400/50 rounded-sm" />
-          </div>
-        </div>
-      );
-    case 'dashboard-demo':
-      return (
-        <div className="w-full h-full bg-gray-800 flex p-px gap-px">
-          <div className="w-1/4 bg-purple-500/40 rounded-sm" />
-          <div className="flex-1 flex flex-col gap-px">
-            <div className="flex-1 bg-indigo-500/30 rounded-sm" />
-            <div className="flex-1 bg-pink-500/30 rounded-sm" />
-          </div>
-        </div>
-      );
-    case 'camera-overlay-demo':
-      return (
-        <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-          <div className="w-[80%] h-[80%] border border-white/30 rounded-sm relative">
-            <div className="absolute top-1/2 left-0 right-0 h-px bg-white/15" />
-            <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/15" />
-          </div>
-        </div>
-      );
-    case 'beta-info':
-      return (
-        <div className="w-full h-full bg-gradient-to-br from-orange-700/60 to-pink-700/60 flex items-center justify-center">
-          <div className="text-[7px]">🚀</div>
-        </div>
-      );
-    case 'parent-educator-info':
-      return (
-        <div className="w-full h-full bg-gray-800 flex flex-col p-px gap-px">
-          <div className="flex-1 bg-green-500/30 rounded-sm" />
-          <div className="flex-1 bg-blue-500/30 rounded-sm" />
-        </div>
-      );
-    case 'investor-info':
-      return (
-        <div className="w-full h-full bg-gray-800 flex items-end justify-around px-px pb-px pt-1">
-          {[0.3, 0.5, 0.7, 0.9, 0.6].map((h, i) => (
-            <div key={i} className="flex-1 mx-px bg-green-500/50 rounded-t-sm" style={{ height: `${h * 100}%` }} />
-          ))}
-        </div>
-      );
-    case 'general-info':
-      return (
-        <div className="w-full h-full bg-gradient-to-br from-indigo-700/40 to-violet-700/40 flex items-center justify-center">
-          <div className="text-[7px]">✨</div>
-        </div>
-      );
-    default:
-      return (
-        <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-          <div className="text-[6px]">📄</div>
-        </div>
-      );
-  }
+  const icon = SECTION_ICONS[section] || '📄';
+  
+  return (
+    <div className="w-full h-full flex items-center justify-center bg-gray-900">
+      <div className="text-xl">{icon}</div>
+    </div>
+  );
 }
 
 export function FilmstripTimeline({ sections, currentSection, onSectionChange, sectionTitles }: FilmstripTimelineProps) {

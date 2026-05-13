@@ -1,25 +1,44 @@
 import { useState, useEffect } from 'react';
-import { Hero } from '../components/hero';
-import { SignupForm } from '../components/signup-form';
 import { ContentSections } from '../components/content-sections';
 import { SocialShare } from '../components/social-share';
+import { Hero } from '../components/hero';
+import { SignupForm } from '../components/signup-form';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { toast } from 'sonner';
-import headerImage from 'figma:asset/5b55fdc032c6621c5e06f8a25920c20d09140022.png';
-import journeyImage from 'figma:asset/e59fc3923399bc5e4d8837acc2de1bbe11d09fc1.png';
-import creditsImage from 'figma:asset/67301e339a8050a33621372e1e51ba3e8b0852fa.png';
+import { motion } from 'motion/react';
+import { MessageSquare } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+const headerImage = 'https://images.unsplash.com/photo-1612539465474-77bd2cc10a10?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjaGlsZHJlbiUyMGNyZWF0aW5nJTIwZmlsbSUyMG1vdmllJTIwZWR1Y2F0aW9uJTIwZnVuJTIwY29sb3JmdWx8ZW58MXx8fHwxNzc4Njc5MzUyfDA&ixlib=rb-4.1.0&q=80&w=1080';
+const journeyImage = 'https://images.unsplash.com/photo-1638893388548-2894f01b1836?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwbGVhcm5pbmclMjBjcmVhdGl2aXR5JTIwdGVhbXdvcmslMjBlZHVjYXRpb24lMjBqb3VybmV5fGVufDF8fHx8MTc3ODY3OTM1Nnww&ixlib=rb-4.1.0&q=80&w=1080';
+const creditsImage = 'https://images.unsplash.com/photo-1639465294781-d4d5d7319951?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhY2hpZXZlbWVudCUyMHN1Y2Nlc3MlMjByZXdhcmQlMjBzdGFycyUyMHRyb3BoeSUyMGNvbG9yZnVsfGVufDF8fHx8MTc3ODY3OTM1OXww&ixlib=rb-4.1.0&q=80&w=1080';
 import type { LandingPageConfig } from '../components/admin/landing-page-editor';
 import { textStyleToCSS } from '../components/admin/landing-page-editor';
 import { useCustomFonts } from '../components/use-custom-fonts';
 
-export type UserType = 'filmmaker' | 'parent' | 'educator' | 'teen' | 'investor' | 'donor' | 'just-curious' | null;
+export type UserType = 'filmmaker' | 'parent' | 'educator' | 'student' | 'investor' | 'donor' | 'just-curious' | null;
 
 export function LandingPage() {
+  const { t, i18n } = useTranslation();
   const [userType, setUserType] = useState<UserType>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [landingConfig, setLandingConfig] = useState<LandingPageConfig | null>(null);
   // Load custom fonts so @font-face rules are injected for visitor-facing pages
   useCustomFonts();
+
+  // Check localStorage for existing user
+  useEffect(() => {
+    const existingUserData = localStorage.getItem('frameGameUser');
+    if (existingUserData) {
+      try {
+        const userData = JSON.parse(existingUserData);
+        if (userData.userType) {
+          setUserType(userData.userType);
+        }
+      } catch (err) {
+        console.error('Failed to parse stored user data:', err);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetch(
@@ -33,9 +52,14 @@ export function LandingPage() {
       .catch(err => console.error('Failed to load landing config:', err));
   }, []);
 
-  const handleSubscribe = async (email: string, name: string, selectedType: UserType) => {
-    if (!selectedType) {
-      toast.error("Please select who you are!");
+  const handleSubscribe = async (
+    email: string, 
+    name: string, 
+    selectedTypes: UserType[], 
+    country: string
+  ) => {
+    if (!selectedTypes || selectedTypes.length === 0) {
+      toast.error(t('signup.selectType'));
       return;
     }
 
@@ -53,7 +77,9 @@ export function LandingPage() {
           body: JSON.stringify({
             email,
             name,
-            userType: selectedType,
+            userTypes: selectedTypes,
+            country,
+            language: i18n.language,
           }),
         }
       );
@@ -64,8 +90,19 @@ export function LandingPage() {
         throw new Error(data.error || 'Failed to subscribe');
       }
 
-      toast.success(landingConfig?.signup?.successMessage || "\uD83C\uDF89 Welcome to The Frame Game!");
-      setUserType(selectedType);
+      toast.success(landingConfig?.signup?.successMessage || t('signup.successMessage'));
+      
+      // Store user data in localStorage
+      localStorage.setItem('frameGameUser', JSON.stringify({
+        email,
+        name,
+        userType: selectedTypes[0], // Use first selected type for content display
+        userTypes: selectedTypes,
+        country,
+        language: i18n.language,
+      }));
+      
+      setUserType(selectedTypes[0]);
       
     } catch (error) {
       console.error('Subscription error:', error);
@@ -80,7 +117,9 @@ export function LandingPage() {
     ? { background: `linear-gradient(135deg, ${landingConfig.background.gradientFrom}, ${landingConfig.background.gradientVia}, ${landingConfig.background.gradientTo})` }
     : undefined;
 
-  const heroImgSrc = landingConfig?.hero?.headerImageUrl || headerImage;
+  const heroImgSrc = landingConfig?.hero?.headerImageUrl && landingConfig.hero.headerImageUrl.trim() !== '' 
+    ? landingConfig.hero.headerImageUrl 
+    : headerImage;
 
   const ts = landingConfig?.textStyles;
 
@@ -116,15 +155,29 @@ export function LandingPage() {
             />
           )}
           
+          {/* Contact Button */}
+          <div className="mt-8">
+            <motion.a
+              href="/contact"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-2xl font-bold shadow-lg transition-all"
+              style={{ fontFamily: 'Fredoka, sans-serif' }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <MessageSquare className="w-5 h-5" />
+              {t('common.contactLink')}
+            </motion.a>
+          </div>
+          
           {/* Admin Link */}
           {(!landingConfig || landingConfig.showAdminLink !== false) && (
-            <div className="mt-8">
+            <div className="mt-4">
               <a 
                 href="/admin"
-                className="hover:opacity-80 transition-opacity"
+                className="hover:opacity-80 transition-opacity text-sm"
                 style={adminLinkCSS}
               >
-                Admin Login &rarr;
+                {t('common.adminLink')} &rarr;
               </a>
             </div>
           )}

@@ -3,8 +3,8 @@ import { Eye, Monitor, Users, X, Maximize2, Minimize2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserType } from '../../pages/landing-page';
 import { ContentSections } from '../content-sections';
-import journeyImage from 'figma:asset/e59fc3923399bc5e4d8837acc2de1bbe11d09fc1.png';
-import creditsImage from 'figma:asset/67301e339a8050a33621372e1e51ba3e8b0852fa.png';
+const journeyImage = 'https://images.unsplash.com/photo-1638893388548-2894f01b1836?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxraWRzJTIwbGVhcm5pbmclMjBjcmVhdGl2aXR5JTIwdGVhbXdvcmslMjBlZHVjYXRpb24lMjBqb3VybmV5fGVufDF8fHx8MTc3ODY3OTM1Nnww&ixlib=rb-4.1.0&q=80&w=1080';
+const creditsImage = 'https://images.unsplash.com/photo-1639465294781-d4d5d7319951?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhY2hpZXZlbWVudCUyMHN1Y2Nlc3MlMjByZXdhcmQlMjBzdGFycyUyMHRyb3BoeSUyMGNvbG9yZnVsfGVufDF8fHx8MTc3ODY3OTM1OXww&ixlib=rb-4.1.0&q=80&w=1080';
 
 const USER_TYPES: { value: UserType; label: string; emoji: string; color: string }[] = [
   { value: 'filmmaker', label: 'Filmmaker', emoji: '🎬', color: 'from-red-500 to-orange-500' },

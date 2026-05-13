@@ -108,10 +108,10 @@ const verifyAdmin = async (token: string | null) => {
 // Subscribe to mailing list
 app.post("/make-server-a8ba6828/subscribe", async (c) => {
   try {
-    const { email, name, userType } = await c.req.json();
+    const { email, name, userTypes, country, language } = await c.req.json();
     
-    if (!email || !userType) {
-      return c.json({ error: "Email and user type are required" }, 400);
+    if (!email || !userTypes || userTypes.length === 0) {
+      return c.json({ error: "Email and at least one user type are required" }, 400);
     }
 
     // Validate email format
@@ -120,32 +120,59 @@ app.post("/make-server-a8ba6828/subscribe", async (c) => {
       return c.json({ error: "Invalid email format" }, 400);
     }
 
-    // Validate user type
-    const validTypes = ["filmmaker", "parent", "educator", "teen", "investor", "donor", "just-curious"];
-    if (!validTypes.includes(userType)) {
-      return c.json({ error: "Invalid user type" }, 400);
+    // Validate user types
+    const validTypes = ["filmmaker", "parent", "educator", "student", "investor", "donor", "just-curious"];
+    const invalidTypes = userTypes.filter((t: string) => !validTypes.includes(t));
+    if (invalidTypes.length > 0) {
+      return c.json({ error: `Invalid user types: ${invalidTypes.join(', ')}` }, 400);
     }
 
-    // Generate unique ID
-    const subscriberId = `subscriber_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // Store subscriber data
-    const subscriberData = {
-      id: subscriberId,
-      email,
-      name: name || "",
-      userType,
-      subscribedAt: new Date().toISOString(),
-    };
+    // Check for existing subscriber by email
+    const allSubscribers = await kv.getByPrefix("mailing_list:");
+    const existingSubscriber = allSubscribers.find((sub: any) => sub.email === email);
 
-    await kv.set(`mailing_list:${subscriberId}`, subscriberData);
-    
-    console.log(`New subscriber added: ${email} as ${userType}`);
+    let subscriberId: string;
+    let isNewSubscriber = false;
+
+    if (existingSubscriber) {
+      // Update existing subscriber
+      subscriberId = existingSubscriber.id;
+      const updatedData = {
+        id: subscriberId,
+        email,
+        name: name || existingSubscriber.name || "",
+        userTypes: userTypes, // Replace with new selection
+        country: country || existingSubscriber.country || "",
+        language: language || existingSubscriber.language || "en",
+        subscribedAt: existingSubscriber.subscribedAt,
+        updatedAt: new Date().toISOString(),
+      };
+      await kv.set(`mailing_list:${subscriberId}`, updatedData);
+      console.log(`Updated existing subscriber: ${email} with types ${userTypes.join(', ')}`);
+    } else {
+      // Create new subscriber
+      subscriberId = `subscriber_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      isNewSubscriber = true;
+      
+      const subscriberData = {
+        id: subscriberId,
+        email,
+        name: name || "",
+        userTypes: userTypes,
+        country: country || "",
+        language: language || "en",
+        subscribedAt: new Date().toISOString(),
+      };
+
+      await kv.set(`mailing_list:${subscriberId}`, subscriberData);
+      console.log(`New subscriber added: ${email} with types ${userTypes.join(', ')}`);
+    }
     
     return c.json({ 
       success: true, 
-      message: "Successfully subscribed!",
-      userType 
+      message: isNewSubscriber ? "Successfully subscribed!" : "Your information has been updated!",
+      userTypes,
+      isNew: isNewSubscriber
     });
   } catch (error) {
     console.error("Error subscribing user to mailing list:", error);
@@ -168,6 +195,91 @@ app.get("/make-server-a8ba6828/admin/subscribers", async (c) => {
   } catch (error) {
     console.error("Error fetching subscribers:", error);
     return c.json({ error: "Failed to fetch subscribers" }, 500);
+  }
+});
+
+// Add subscriber manually (admin only)
+app.post("/make-server-a8ba6828/admin/subscribers", async (c) => {
+  try {
+    const token = c.req.header('X-Admin-Token');
+    const isAdmin = await verifyAdmin(token);
+    
+    if (!isAdmin) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    
+    const { email, name, userTypes, country, language } = await c.req.json();
+    
+    if (!email || !userTypes || userTypes.length === 0) {
+      return c.json({ error: "Email and at least one user type are required" }, 400);
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return c.json({ error: "Invalid email format" }, 400);
+    }
+
+    // Validate user types
+    const validTypes = ["filmmaker", "parent", "educator", "student", "investor", "donor", "just-curious"];
+    const invalidTypes = userTypes.filter((t: string) => !validTypes.includes(t));
+    if (invalidTypes.length > 0) {
+      return c.json({ error: `Invalid user types: ${invalidTypes.join(', ')}` }, 400);
+    }
+
+    // Generate unique ID
+    const subscriberId = `subscriber_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Store subscriber data
+    const subscriberData = {
+      id: subscriberId,
+      email,
+      name: name || "",
+      userTypes: userTypes,
+      country: country || "",
+      language: language || "en",
+      subscribedAt: new Date().toISOString(),
+    };
+
+    await kv.set(`mailing_list:${subscriberId}`, subscriberData);
+    
+    console.log(`Admin manually added subscriber: ${email} with types ${userTypes.join(', ')}`);
+    
+    return c.json({ 
+      success: true, 
+      subscriber: subscriberData 
+    });
+  } catch (error) {
+    console.error("Error adding subscriber:", error);
+    return c.json({ error: "Failed to add subscriber" }, 500);
+  }
+});
+
+// Delete subscriber (admin only)
+app.delete("/make-server-a8ba6828/admin/subscribers/:id", async (c) => {
+  try {
+    const token = c.req.header('X-Admin-Token');
+    const isAdmin = await verifyAdmin(token);
+    
+    if (!isAdmin) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    
+    const subscriberId = c.req.param('id');
+    
+    if (!subscriberId) {
+      return c.json({ error: "Subscriber ID is required" }, 400);
+    }
+    
+    // Delete subscriber
+    await kv.del(`mailing_list:${subscriberId}`);
+    
+    console.log(`Admin deleted subscriber: ${subscriberId}`);
+    
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting subscriber:", error);
+    return c.json({ error: "Failed to delete subscriber" }, 500);
   }
 });
 
@@ -346,7 +458,7 @@ app.get("/make-server-a8ba6828/access-control", async (c) => {
           filmmaker: ["studio-demo", "general-info", "beta-info"],
           parent: ["general-info", "parent-educator-info", "dashboard-demo"],
           educator: ["general-info", "parent-educator-info", "dashboard-demo"],
-          teen: ["studio-demo", "general-info", "beta-info"],
+          student: ["studio-demo", "general-info", "beta-info"],
           investor: ["investor-info", "general-info", "studio-demo", "dashboard-demo"],
           donor: ["general-info", "parent-educator-info"],
           "just-curious": ["general-info"]
@@ -529,6 +641,42 @@ app.post("/make-server-a8ba6828/sections", async (c) => {
   } catch (error) {
     console.error("Error saving sections:", error);
     return c.json({ error: "Failed to save section configuration" }, 500);
+  }
+});
+
+// Get Learn More slide configuration (public)
+app.get("/make-server-a8ba6828/learn-more-config", async (c) => {
+  try {
+    const config = await kv.get("learn_more_config");
+    return c.json({ config: config || null });
+  } catch (error) {
+    console.error("Error fetching learn more config:", error);
+    return c.json({ error: "Failed to fetch learn more config" }, 500);
+  }
+});
+
+// Save Learn More slide configuration (admin only)
+app.post("/make-server-a8ba6828/learn-more-config", async (c) => {
+  try {
+    const token = c.req.header('X-Admin-Token');
+    const isAdmin = await verifyAdmin(token);
+    
+    if (!isAdmin) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    
+    const { config } = await c.req.json();
+    
+    if (!config) {
+      return c.json({ error: "config is required" }, 400);
+    }
+    
+    await kv.set("learn_more_config", config);
+    
+    return c.json({ success: true, message: "Learn More configuration saved successfully" });
+  } catch (error) {
+    console.error("Error saving learn more config:", error);
+    return c.json({ error: "Failed to save learn more config" }, 500);
   }
 });
 
@@ -805,6 +953,343 @@ app.post("/make-server-a8ba6828/admin/change-password", async (c) => {
   } catch (error) {
     console.error("Error changing admin password:", error);
     return c.json({ error: `Failed to change password: ${error}` }, 500);
+  }
+});
+
+// ─── Meta Tags Routes ───
+
+// Get meta tags (public)
+app.get("/make-server-a8ba6828/meta-tags", async (c) => {
+  try {
+    const metaTags = await kv.get("site_meta_tags");
+    return c.json({ metaTags: metaTags || {
+      title: 'The Frame Game - Arts Education Platform',
+      description: 'Transform passive screen time into active creation! Learn filmmaking through fun tutorials, create with powerful tools, and compete for prizes.',
+      image: '',
+      favicon: '',
+      twitterCard: 'summary_large_image',
+    }});
+  } catch (error) {
+    console.error("Error fetching meta tags:", error);
+    return c.json({ metaTags: null }, 500);
+  }
+});
+
+// Update meta tags (admin only)
+app.put("/make-server-a8ba6828/meta-tags", async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    const isAdmin = await verifyAdmin(token);
+    
+    if (!isAdmin) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const { metaTags } = await c.req.json();
+    await kv.set("site_meta_tags", metaTags);
+    
+    console.log("Meta tags updated successfully");
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error updating meta tags:", error);
+    return c.json({ error: "Failed to update meta tags" }, 500);
+  }
+});
+
+// ─── Contact Form Routes ───
+
+// Submit contact form (public)
+app.post("/make-server-a8ba6828/contact", async (c) => {
+  try {
+    const { name, email, subject, message } = await c.req.json();
+
+    if (!name || !email || !message) {
+      return c.json({ error: "Missing required fields" }, 400);
+    }
+
+    const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const submission = {
+      id: contactId,
+      name,
+      email,
+      subject: subject || 'General Inquiry',
+      message,
+      submittedAt: new Date().toISOString(),
+    };
+
+    await kv.set(`contact_submission:${contactId}`, submission);
+    
+    console.log(`Contact form submitted: ${name} (${email})`);
+    return c.json({ success: true, id: contactId });
+  } catch (error) {
+    console.error("Error saving contact submission:", error);
+    return c.json({ error: "Failed to submit contact form" }, 500);
+  }
+});
+
+// Get all contact submissions (admin only)
+app.get("/make-server-a8ba6828/admin/contact", async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    const isAdmin = await verifyAdmin(token);
+    
+    if (!isAdmin) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const submissions = await kv.getByPrefix("contact_submission:");
+    
+    // Sort by submission date (newest first)
+    const sortedSubmissions = (submissions || []).sort((a: any, b: any) => {
+      return new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime();
+    });
+
+    return c.json({ submissions: sortedSubmissions });
+  } catch (error) {
+    console.error("Error fetching contact submissions:", error);
+    return c.json({ error: "Failed to fetch contact submissions" }, 500);
+  }
+});
+
+// Delete contact submission (admin only)
+app.delete("/make-server-a8ba6828/admin/contact/:id", async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    const isAdmin = await verifyAdmin(token);
+    
+    if (!isAdmin) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const contactId = c.req.param('id');
+    await kv.del(`contact_submission:${contactId}`);
+    
+    console.log(`Contact submission deleted: ${contactId}`);
+    return c.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting contact submission:", error);
+    return c.json({ error: "Failed to delete contact submission" }, 500);
+  }
+});
+
+// ─── Beta Signup Routes ───
+
+// Submit beta signup form (public)
+app.post("/make-server-a8ba6828/beta-signup", async (c) => {
+  try {
+    const { name, email, phone, experience, interests } = await c.req.json();
+
+    if (!name || !email) {
+      return c.json({ error: "Missing required fields" }, 400);
+    }
+
+    // Check if email already exists as a beta applicant
+    const existingSubscribers = await kv.getByPrefix("subscriber:");
+    const existingBeta = (existingSubscribers || []).find(
+      (sub: any) => sub.email === email && sub.userType === 'beta'
+    );
+
+    if (existingBeta) {
+      return c.json({ error: "You've already applied for the beta program!" }, 400);
+    }
+
+    const subscriberId = `subscriber_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const subscriber = {
+      id: subscriberId,
+      email,
+      name,
+      phone: phone || '',
+      experience: experience || '',
+      interests: interests || '',
+      userType: 'beta',
+      subscribedAt: new Date().toISOString(),
+    };
+
+    await kv.set(`subscriber:${subscriberId}`, subscriber);
+    
+    console.log(`Beta signup: ${name} (${email}) - Experience: ${experience}`);
+    return c.json({ success: true, id: subscriberId });
+  } catch (error) {
+    console.error("Error saving beta signup:", error);
+    return c.json({ error: "Failed to submit beta signup" }, 500);
+  }
+});
+
+// Get all beta applicants (admin only)
+app.get("/make-server-a8ba6828/admin/beta-applicants", async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    const isAdmin = await verifyAdmin(token);
+    
+    if (!isAdmin) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const subscribers = await kv.getByPrefix("subscriber:");
+    
+    // Filter for beta applicants only
+    const betaApplicants = (subscribers || [])
+      .filter((sub: any) => sub.userType === 'beta')
+      .sort((a: any, b: any) => {
+        return new Date(b.subscribedAt).getTime() - new Date(a.subscribedAt).getTime();
+      });
+
+    return c.json({ applicants: betaApplicants });
+  } catch (error) {
+    console.error("Error fetching beta applicants:", error);
+    return c.json({ error: "Failed to fetch beta applicants" }, 500);
+  }
+});
+
+// ─── Investor Stats Dashboard ───
+
+// Get real-time stats for investors (admin only)
+app.get("/make-server-a8ba6828/admin/investor-stats", async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    const isAdmin = await verifyAdmin(token);
+    
+    if (!isAdmin) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const subscribers = await kv.getByPrefix("mailing_list:");
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Total signups
+    const totalSignups = subscribers.length;
+
+    // Growth stats
+    const todaySignups = subscribers.filter((s: any) => 
+      new Date(s.subscribedAt) >= oneDayAgo
+    ).length;
+    const weekSignups = subscribers.filter((s: any) => 
+      new Date(s.subscribedAt) >= oneWeekAgo
+    ).length;
+    const monthSignups = subscribers.filter((s: any) => 
+      new Date(s.subscribedAt) >= oneMonthAgo
+    ).length;
+
+    // Category breakdown
+    const categoryCount: Record<string, number> = {};
+    let multiCategoryCount = 0;
+    
+    subscribers.forEach((sub: any) => {
+      const types = sub.userTypes || [sub.userType]; // Support both old and new format
+      if (types.length > 1) {
+        multiCategoryCount++;
+      }
+      types.forEach((type: string) => {
+        categoryCount[type] = (categoryCount[type] || 0) + 1;
+      });
+    });
+
+    const multiCategoryPercentage = totalSignups > 0 
+      ? Math.round((multiCategoryCount / totalSignups) * 100) 
+      : 0;
+
+    // Country distribution
+    const countryCount: Record<string, number> = {};
+    subscribers.forEach((sub: any) => {
+      const country = sub.country || 'Unknown';
+      countryCount[country] = (countryCount[country] || 0) + 1;
+    });
+
+    // Timeline data (last 30 days)
+    const timelineData: Array<{ date: string; count: number }> = [];
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const dateStr = date.toISOString().split('T')[0];
+      const count = subscribers.filter((s: any) => 
+        s.subscribedAt.startsWith(dateStr)
+      ).length;
+      timelineData.push({ date: dateStr, count });
+    }
+
+    return c.json({
+      totalSignups,
+      growth: {
+        today: todaySignups,
+        week: weekSignups,
+        month: monthSignups,
+      },
+      categories: categoryCount,
+      multiCategoryPercentage,
+      countries: countryCount,
+      timeline: timelineData,
+    });
+  } catch (error) {
+    console.error("Error fetching investor stats:", error);
+    return c.json({ error: "Failed to fetch investor stats" }, 500);
+  }
+});
+
+// ─── CSV Export ───
+
+// Export all subscribers to CSV (admin only)
+app.get("/make-server-a8ba6828/admin/export-csv", async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    const isAdmin = await verifyAdmin(token);
+    
+    if (!isAdmin) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+
+    const subscribers = await kv.getByPrefix("mailing_list:");
+    
+    // Build CSV content
+    const csvHeader = "Name,Email,Categories,Country,Language,Signup Date\n";
+    const csvRows = subscribers.map((sub: any) => {
+      const name = (sub.name || '').replace(/"/g, '""');
+      const email = sub.email;
+      const categories = (sub.userTypes || [sub.userType] || []).join('; ');
+      const country = sub.country || '';
+      const language = sub.language || 'en';
+      const date = sub.subscribedAt || '';
+      
+      return `"${name}","${email}","${categories}","${country}","${language}","${date}"`;
+    }).join('\n');
+
+    const csv = csvHeader + csvRows;
+
+    // Add stats summary as additional rows
+    const totalCount = subscribers.length;
+    const categoryCount: Record<string, number> = {};
+    subscribers.forEach((sub: any) => {
+      const types = sub.userTypes || [sub.userType];
+      types.forEach((type: string) => {
+        categoryCount[type] = (categoryCount[type] || 0) + 1;
+      });
+    });
+
+    const statsRows = [
+      '',
+      '--- STATISTICS SUMMARY ---',
+      `Total Subscribers,${totalCount}`,
+      '',
+      'Category Breakdown',
+      ...Object.entries(categoryCount).map(([cat, count]) => `${cat},${count}`),
+    ].join('\n');
+
+    const finalCSV = csv + '\n' + statsRows;
+
+    return c.text(finalCSV, 200, {
+      'Content-Type': 'text/csv',
+      'Content-Disposition': `attachment; filename="frame-game-subscribers-${new Date().toISOString().split('T')[0]}.csv"`,
+    });
+  } catch (error) {
+    console.error("Error exporting CSV:", error);
+    return c.json({ error: "Failed to export CSV" }, 500);
   }
 });
 

@@ -12,7 +12,19 @@ import { Slider } from '../ui/slider';
 import { TextStyleEditor, defaultTextStyle, textStyleToCSS } from './landing-page-editor';
 import type { TextStyle } from './landing-page-editor';
 
-type SectionType = 'studio-demo' | 'dashboard-demo' | 'camera-overlay-demo' | 'beta-info' | 'parent-educator-info' | 'investor-info' | 'general-info' | 'custom-html' | 'custom-embed';
+type SectionType = 'studio-demo' | 'dashboard-demo' | 'camera-overlay-demo' | 'beta-info' | 'parent-educator-info' | 'investor-info' | 'general-info' | 'custom-html' | 'custom-embed' | 'custom-canvas' | 'beta-page';
+
+interface CanvasImage {
+  id: string;
+  url: string;
+  x: number; // percentage 0-100
+  y: number; // percentage 0-100
+  width: number; // percentage 0-100
+  height: number; // percentage 0-100
+  rotation?: number; // degrees
+  zIndex?: number;
+  objectFit?: 'contain' | 'cover' | 'fill' | 'none';
+}
 
 interface EditableContent {
   heading?: string;
@@ -28,6 +40,9 @@ interface EditableContent {
   bodyStyle?: TextStyle;
   bulletTitleStyle?: TextStyle;
   ctaStyle?: TextStyle;
+  canvasImages?: CanvasImage[];
+  canvasBackgroundColor?: string;
+  pdfUrl?: string;
 }
 
 interface SectionConfig {
@@ -64,11 +79,13 @@ const SECTION_TEMPLATES: { value: SectionType; label: string; icon: string }[] =
   { value: 'dashboard-demo', label: 'Teacher Dashboard', icon: '\uD83D\uDCCA' },
   { value: 'camera-overlay-demo', label: 'Camera Overlays', icon: '\uD83D\uDCF8' },
   { value: 'beta-info', label: 'Beta Program', icon: '\uD83D\uDE80' },
+  { value: 'beta-page', label: 'Beta Page Content', icon: '📋' },
   { value: 'parent-educator-info', label: 'Parents & Educators', icon: '\uD83D\uDC68\u200D\uD83D\uDC69\u200D\uD83D\uDC67' },
   { value: 'investor-info', label: 'Investor Info', icon: '\uD83D\uDCC8' },
   { value: 'general-info', label: 'General Info', icon: '\u2728' },
   { value: 'custom-html', label: 'Custom HTML', icon: '\uD83D\uDD27' },
   { value: 'custom-embed', label: 'Embed (iframe)', icon: '\uD83C\uDF10' },
+  { value: 'custom-canvas', label: 'Custom Canvas', icon: '\uD83D\uDC8E' },
 ];
 
 const USER_TYPES = [
@@ -86,11 +103,13 @@ const THEME: Record<string, { bg: string; text: string; accent: string }> = {
   'dashboard-demo': { bg: 'from-blue-100 to-cyan-100', text: 'from-blue-600 to-cyan-600', accent: 'blue' },
   'camera-overlay-demo': { bg: 'from-pink-100 to-rose-100', text: 'from-pink-600 to-rose-600', accent: 'pink' },
   'beta-info': { bg: 'from-yellow-100 to-orange-100', text: 'from-yellow-600 to-orange-600', accent: 'orange' },
+  'beta-page': { bg: 'from-orange-100 to-pink-100', text: 'from-orange-600 to-pink-600', accent: 'orange' },
   'parent-educator-info': { bg: 'from-green-100 to-teal-100', text: 'from-green-600 to-teal-600', accent: 'green' },
   'investor-info': { bg: 'from-emerald-100 to-green-100', text: 'from-emerald-600 to-green-600', accent: 'emerald' },
   'general-info': { bg: 'from-purple-100 to-pink-100', text: 'from-purple-600 to-pink-600', accent: 'purple' },
   'custom-html': { bg: 'from-gray-100 to-gray-200', text: 'from-gray-600 to-gray-800', accent: 'gray' },
   'custom-embed': { bg: 'from-sky-100 to-blue-100', text: 'from-sky-600 to-blue-600', accent: 'sky' },
+  'custom-canvas': { bg: 'from-gray-100 to-gray-200', text: 'from-gray-600 to-gray-800', accent: 'gray' },
 };
 
 const DEFAULT_CONTENT: Record<string, EditableContent> = {
@@ -98,6 +117,7 @@ const DEFAULT_CONTENT: Record<string, EditableContent> = {
   'dashboard-demo': { heading: 'Teacher & Student Dashboard', subheading: 'Track progress, manage assignments, and showcase student work \u2014 all in one place.', bodyText: '\u2705 Assignment Tracking \u2014 Create and manage film projects\n\uD83D\uDCC8 Progress Reports \u2014 See how students are improving\n\uD83C\uDFC6 Showcases \u2014 Highlight the best student work\n\uD83D\uDC65 Collaboration \u2014 Students can work together in real time' },
   'camera-overlay-demo': { heading: 'Camera Overlay System', subheading: 'Interactive on-screen guides that teach students professional framing techniques while they shoot.', bodyText: '\uD83D\uDCCF Rule of Thirds grid overlay\n\uD83C\uDFAF Focus point guides\n\uD83D\uDCD0 Horizon leveling\n\uD83C\uDFAC Shot composition tips in real time' },
   'beta-info': { heading: 'Join Our Beta Program', subheading: 'Be among the first to experience Frame Game and help shape the future of arts education.', bodyText: '\u26A1 Early Access \u2014 Be the first to try Frame Game Studio\n\uD83C\uDF81 Exclusive Rewards \u2014 Compete for cash prizes and recognition\n\u2728 Shape the Future \u2014 Your feedback directly influences development', ctaText: 'Sign Up for Beta' },
+  'beta-page': { heading: 'Join the Beta Program', subheading: 'Get early access, exclusive rewards, and help shape the future of Frame Game!', bodyText: '\u26A1 Early Access \u2014 Be the first to try new features\n\uD83C\uDF81 Exclusive Rewards \u2014 Compete for cash prizes & recognition\n\u2728 Shape the Future \u2014 Your feedback drives our development\n\uD83C\uDFC6 Founding Member Status \u2014 Permanent recognition in our community' },
   'parent-educator-info': { heading: 'For Parents & Educators', subheading: 'Empower the next generation of storytellers with professional-grade tools designed for learning.', bodyText: '\uD83D\uDCDA Curriculum-aligned lesson plans\n\uD83D\uDEE1\uFE0F Safe, moderated environment\n\uD83D\uDCCA Progress tracking dashboards\n\uD83E\uDD1D Teacher-parent communication tools' },
   'investor-info': { heading: 'Investment Opportunity', subheading: 'Join us in revolutionizing arts education through innovative technology.', bodyText: '\uD83C\uDFAF $1.2B Market \u2014 Arts education market growing 15% annually\n\uD83D\uDC65 10M+ Creators \u2014 Gen Z content creators seeking skill development\n\uD83D\uDCCA 40% Engagement Boost \u2014 Gamification drives retention in edtech\n\uD83D\uDE80 Scalable Platform \u2014 Cloud-based, global scale\n\uD83D\uDCB0 Multiple Revenue Streams \u2014 Subscriptions, partnerships, licensing', ctaText: 'Request Pitch Deck' },
   'general-info': { heading: 'About The Frame Game', subheading: 'Transforming passive screen time into active creation!', bodyText: '\uD83C\uDFAC Learn \u2014 Master filmmaking through fun, guided tutorials\n\uD83D\uDE80 Create \u2014 Bring your stories to life with powerful, easy-to-use tools\n\uD83C\uDFC6 Earn \u2014 Compete for prizes, recognition, and real-world opportunities' },
@@ -126,7 +146,17 @@ export function SectionManager() {
     { id: '1', type: 'studio-demo', title: 'Frame Game Studio', enabled: true, order: 0 },
     { id: '2', type: 'dashboard-demo', title: 'Teacher Dashboard', enabled: true, order: 1 },
     { id: '3', type: 'camera-overlay-demo', title: 'Camera Overlays', enabled: true, order: 2 },
-    { id: '4', type: 'beta-info', title: 'Beta Program', enabled: true, order: 3 },
+    { 
+      id: '4', 
+      type: 'beta-info', 
+      title: 'Beta Program', 
+      enabled: true, 
+      order: 3,
+      editableContent: {
+        ctaUrl: '/beta',
+        ctaLinkType: 'internal'
+      }
+    },
     { id: '5', type: 'parent-educator-info', title: 'For Parents & Educators', enabled: true, order: 4 },
     { id: '6', type: 'investor-info', title: 'Investment Opportunity', enabled: true, order: 5 },
     { id: '7', type: 'general-info', title: 'About Us', enabled: true, order: 6 },
@@ -224,8 +254,11 @@ function SectionEditor({ section, onChange, onSave, onCancel, isNew }: { section
   const embedUrl = ec.embedUrl ?? '';
   const isCustomHTML = section.type === 'custom-html';
   const isCustomEmbed = section.type === 'custom-embed';
+  const isCustomCanvas = section.type === 'custom-canvas';
 
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedCanvasImage, setSelectedCanvasImage] = useState<string | null>(null);
+  
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return;
     if (file.size > 50 * 1024 * 1024) { toast.error('File too large (50MB max)'); e.target.value = ''; return; }
@@ -235,9 +268,41 @@ function SectionEditor({ section, onChange, onSave, onCancel, isNew }: { section
       const formData = new FormData(); formData.append('file', file);
       const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-a8ba6828/admin/upload`, { method: 'POST', headers: { 'Authorization': `Bearer ${publicAnonKey}`, 'X-Admin-Token': token || '' }, body: formData });
       const data = await response.json();
-      if (data.success && data.url) { if (data.fileType === 'application/pdf') { setEC({ embedUrl: data.url }); toast.success('PDF uploaded!'); } else { setEC({ imageUrl: data.url }); toast.success('Image uploaded!'); } }
+      if (data.success && data.url) { 
+        if (isCustomCanvas) {
+          // Add new image to canvas
+          const newImage: CanvasImage = {
+            id: Date.now().toString(),
+            url: data.url,
+            x: 25,
+            y: 25,
+            width: 50,
+            height: 50,
+            rotation: 0,
+            zIndex: (ec.canvasImages?.length || 0) + 1,
+            objectFit: 'contain'
+          };
+          setEC({ canvasImages: [...(ec.canvasImages || []), newImage] });
+          setSelectedCanvasImage(newImage.id);
+          toast.success('Image added to canvas!');
+        } else if (data.fileType === 'application/pdf') { 
+          setEC({ pdfUrl: data.url }); 
+          toast.success('PDF uploaded!'); 
+        } else { 
+          setEC({ imageUrl: data.url }); 
+          toast.success('Image uploaded!'); 
+        }
+      }
       else toast.error(data.error || 'Upload failed');
     } catch (error) { console.error('Upload error:', error); toast.error('Upload failed'); } finally { setIsUploading(false); e.target.value = ''; }
+  };
+
+  const updateCanvasImage = (id: string, updates: Partial<CanvasImage>) => {
+    setEC({ 
+      canvasImages: ec.canvasImages?.map(img => 
+        img.id === id ? { ...img, ...updates } : img
+      )
+    });
   };
 
   return (
@@ -271,11 +336,149 @@ function SectionEditor({ section, onChange, onSave, onCancel, isNew }: { section
             <div><Label className="text-xs font-bold text-gray-400 uppercase">HTML Content</Label><Textarea value={section.customContent || ''} onChange={(e) => onChange({ ...section, customContent: e.target.value })} rows={14} className="mt-1 font-mono text-xs" placeholder="<div class='p-8 text-center'>Your HTML here...</div>" /></div>
           ) : isCustomEmbed ? (
             <div><Label className="text-xs font-bold text-gray-400 uppercase">Embed URL</Label><Input value={section.embedUrl || ''} onChange={(e) => onChange({ ...section, embedUrl: e.target.value })} placeholder="https://youtube.com/embed/..." className="mt-1" /><p className="text-[10px] text-gray-400 mt-1">YouTube, Figma, Replit, CodePen, Google Slides, etc.</p></div>
+          ) : isCustomCanvas ? (
+            <div className="space-y-4">
+              <div>
+                <Label className="text-xs font-bold text-gray-400 uppercase">Canvas Background Color</Label>
+                <Input value={ec.canvasBackgroundColor || ''} onChange={(e) => setEC({ canvasBackgroundColor: e.target.value })} className="mt-1" placeholder="#ffffff or transparent" />
+              </div>
+              
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl p-4 border border-amber-200">
+                <Label className="text-xs font-bold text-amber-700 uppercase mb-2 block">Upload Images</Label>
+                <p className="text-[10px] text-gray-500 mb-3">Upload multiple .jpg, .png, .gif, or .webp files (up to 50MB each)</p>
+                <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${isUploading ? 'border-amber-400 bg-amber-100 text-amber-700' : 'border-amber-300 bg-white hover:border-amber-500 text-amber-600'}`}>
+                  {isUploading ? <><div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" /><span className="text-xs font-bold">Uploading...</span></> : <><Upload className="w-4 h-4" /><span className="text-xs font-bold">Add Image</span></>}
+                  <input type="file" accept=".jpg,.jpeg,.png,.gif,.webp" onChange={handleFileUpload} disabled={isUploading} className="hidden" />
+                </label>
+              </div>
+
+              {/* PDF Upload Section */}
+              <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4 border border-blue-200">
+                <Label className="text-xs font-bold text-blue-700 uppercase mb-2 block">Upload PDF</Label>
+                <p className="text-[10px] text-gray-500 mb-3">Upload a PDF document with navigable pages (up to 50MB)</p>
+                <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-dashed cursor-pointer transition-all ${isUploading ? 'border-blue-400 bg-blue-100 text-blue-700' : 'border-blue-300 bg-white hover:border-blue-500 text-blue-600'}`}>
+                  {isUploading ? <><div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /><span className="text-xs font-bold">Uploading...</span></> : <><FileText className="w-4 h-4" /><span className="text-xs font-bold">Add PDF</span></>}
+                  <input type="file" accept=".pdf" onChange={handleFileUpload} disabled={isUploading} className="hidden" />
+                </label>
+                {ec.pdfUrl && (
+                  <div className="mt-3 flex items-center gap-2 bg-white rounded-lg p-2 border border-gray-200">
+                    <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    <span className="text-[10px] text-gray-600 truncate flex-1">{ec.pdfUrl.split('/').pop()?.split('?')[0] || 'PDF Document'}</span>
+                    <button onClick={() => setEC({ pdfUrl: '' })} className="p-0.5 hover:bg-red-50 rounded"><X className="w-3 h-3 text-red-400" /></button>
+                  </div>
+                )}
+              </div>
+
+              {/* Image List */}
+              {ec.canvasImages && ec.canvasImages.length > 0 && (
+                <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+                  <Label className="text-xs font-bold text-gray-500 uppercase">Images ({ec.canvasImages.length})</Label>
+                  {ec.canvasImages.map(img => (
+                    <div key={img.id} onClick={() => setSelectedCanvasImage(img.id)} className={`p-2 rounded-lg border-2 cursor-pointer transition-all ${selectedCanvasImage === img.id ? 'bg-blue-50 border-blue-400' : 'bg-white border-gray-200 hover:border-gray-300'}`}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Image className="w-4 h-4 text-green-600 flex-shrink-0" />
+                        <span className="text-[10px] text-gray-600 truncate flex-1">{img.url.split('/').pop()?.split('?')[0] || 'Image'}</span>
+                        <button onClick={(e) => { e.stopPropagation(); setEC({ canvasImages: ec.canvasImages?.filter(i => i.id !== img.id) }); if (selectedCanvasImage === img.id) setSelectedCanvasImage(null); }} className="p-0.5 hover:bg-red-50 rounded"><X className="w-3 h-3 text-red-400" /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Image Controls */}
+              {selectedCanvasImage && ec.canvasImages && ec.canvasImages.find(i => i.id === selectedCanvasImage) && (() => {
+                const img = ec.canvasImages.find(i => i.id === selectedCanvasImage)!;
+                return (
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200 space-y-3">
+                    <Label className="text-xs font-bold text-blue-700 uppercase block">Image Controls</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><div className="flex items-center justify-between mb-1"><Label className="text-xs text-gray-600">X Position</Label><span className="text-xs font-mono text-blue-600 font-bold">{img.x}%</span></div><Slider value={[img.x]} min={0} max={100} step={1} onValueChange={([v]) => updateCanvasImage(img.id, { x: v })} /></div>
+                      <div><div className="flex items-center justify-between mb-1"><Label className="text-xs text-gray-600">Y Position</Label><span className="text-xs font-mono text-blue-600 font-bold">{img.y}%</span></div><Slider value={[img.y]} min={0} max={100} step={1} onValueChange={([v]) => updateCanvasImage(img.id, { y: v })} /></div>
+                      <div><div className="flex items-center justify-between mb-1"><Label className="text-xs text-gray-600">Width</Label><span className="text-xs font-mono text-blue-600 font-bold">{img.width}%</span></div><Slider value={[img.width]} min={5} max={100} step={1} onValueChange={([v]) => updateCanvasImage(img.id, { width: v })} /></div>
+                      <div><div className="flex items-center justify-between mb-1"><Label className="text-xs text-gray-600">Height</Label><span className="text-xs font-mono text-blue-600 font-bold">{img.height}%</span></div><Slider value={[img.height]} min={5} max={100} step={1} onValueChange={([v]) => updateCanvasImage(img.id, { height: v })} /></div>
+                    </div>
+                    <div><div className="flex items-center justify-between mb-1"><Label className="text-xs text-gray-600">Rotation</Label><span className="text-xs font-mono text-blue-600 font-bold">{img.rotation || 0}°</span></div><Slider value={[img.rotation || 0]} min={-180} max={180} step={5} onValueChange={([v]) => updateCanvasImage(img.id, { rotation: v })} /></div>
+                    <div><div className="flex items-center justify-between mb-1"><Label className="text-xs text-gray-600">Z-Index (Layer)</Label><span className="text-xs font-mono text-blue-600 font-bold">{img.zIndex || 1}</span></div><Slider value={[img.zIndex || 1]} min={1} max={20} step={1} onValueChange={([v]) => updateCanvasImage(img.id, { zIndex: v })} /></div>
+                    <div><Label className="text-xs text-gray-600 mb-1 block">Object Fit</Label><div className="flex gap-1.5">{(['contain','cover','fill','none'] as const).map(fit => <button key={fit} onClick={() => updateCanvasImage(img.id, { objectFit: fit })} className={`flex-1 py-1 rounded-lg text-[10px] font-bold transition-all ${(img.objectFit || 'contain') === fit ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 border border-gray-200'}`}>{fit}</button>)}</div></div>
+                  </div>
+                );
+              })()}
+            </div>
           ) : (<>
             <div><Label className="text-xs font-bold text-gray-400 uppercase">Heading</Label><Input value={heading} onChange={(e) => setEC({ heading: e.target.value })} className="mt-1 font-bold" style={{ fontFamily: 'Fredoka, sans-serif' }} placeholder={defaults?.heading} /></div>
             <div><Label className="text-xs font-bold text-gray-400 uppercase">Subheading</Label><Input value={subheading} onChange={(e) => setEC({ subheading: e.target.value })} className="mt-1" placeholder={defaults?.subheading} /></div>
             <div><Label className="text-xs font-bold text-gray-400 uppercase">Body Text</Label><Textarea value={bodyText} onChange={(e) => setEC({ bodyText: e.target.value })} rows={6} className="mt-1 text-sm" placeholder={defaults?.bodyText} /><p className="text-[10px] text-gray-400 mt-1">Use line breaks for separate items. Emoji at start = bullet icon.</p></div>
-            <div className="grid grid-cols-2 gap-3"><div><Label className="text-xs font-bold text-gray-400 uppercase">CTA Button Text</Label><Input value={ctaText} onChange={(e) => setEC({ ctaText: e.target.value })} className="mt-1" placeholder="e.g., Sign Up Now" /></div><div><Label className="text-xs font-bold text-gray-400 uppercase">CTA Link</Label><Input value={ctaUrl} onChange={(e) => setEC({ ctaUrl: e.target.value })} className="mt-1" placeholder="https://..." /></div></div>
+            
+            {/* CTA Button Configuration */}
+            <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-4 border border-blue-200">
+              <Label className="text-xs font-bold text-blue-600 uppercase mb-3 block">Button / Call-to-Action</Label>
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs font-bold text-gray-400 uppercase">Button Text</Label>
+                  <Input value={ctaText} onChange={(e) => setEC({ ctaText: e.target.value })} className="mt-1" placeholder="e.g., Sign Up Now" />
+                </div>
+                
+                {ctaText && (
+                  <>
+                    <div>
+                      <Label className="text-xs font-bold text-gray-400 uppercase">Link Type</Label>
+                      <select 
+                        value={ec.ctaLinkType || 'external'} 
+                        onChange={(e) => setEC({ ctaLinkType: e.target.value as 'external' | 'internal' | 'scroll' | 'slide' })}
+                        className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm"
+                        style={{ fontFamily: 'Comic Neue, cursive' }}
+                      >
+                        <option value="external">External URL (opens in new tab)</option>
+                        <option value="internal">Internal Page (same site)</option>
+                        <option value="scroll">Scroll to Section (on landing page)</option>
+                        <option value="slide">Open Content Slide</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs font-bold text-gray-400 uppercase">
+                        {ec.ctaLinkType === 'external' && 'External URL'}
+                        {ec.ctaLinkType === 'internal' && 'Internal Page Path'}
+                        {ec.ctaLinkType === 'scroll' && 'Section ID'}
+                        {(!ec.ctaLinkType || ec.ctaLinkType === 'slide') && 'Slide Number'}
+                      </Label>
+                      {ec.ctaLinkType === 'internal' ? (
+                        <select
+                          value={ctaUrl}
+                          onChange={(e) => setEC({ ctaUrl: e.target.value })}
+                          className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm"
+                          style={{ fontFamily: 'Comic Neue, cursive' }}
+                        >
+                          <option value="">Select a page...</option>
+                          <option value="/">Home Page</option>
+                          <option value="/contact">Contact Page</option>
+                          <option value="/beta">Beta Signup Page</option>
+                          <option value="/admin">Admin Login</option>
+                        </select>
+                      ) : (
+                        <Input 
+                          value={ctaUrl} 
+                          onChange={(e) => setEC({ ctaUrl: e.target.value })} 
+                          className="mt-1" 
+                          placeholder={
+                            ec.ctaLinkType === 'external' ? 'https://example.com' :
+                            ec.ctaLinkType === 'scroll' ? 'hero or footer' :
+                            '0, 1, 2...'
+                          }
+                        />
+                      )}
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {ec.ctaLinkType === 'external' && 'Full URL starting with https://'}
+                        {ec.ctaLinkType === 'internal' && 'Select an internal page from the dropdown'}
+                        {ec.ctaLinkType === 'scroll' && 'Element ID to scroll to (e.g., "hero", "footer")'}
+                        {(!ec.ctaLinkType || ec.ctaLinkType === 'slide') && 'Slide index number (0 = first slide)'}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
             <div><Label className="text-xs font-bold text-gray-400 uppercase">Image URL</Label><Input value={imageUrl} onChange={(e) => setEC({ imageUrl: e.target.value })} className="mt-1" placeholder="https://example.com/image.jpg" /></div>
             <div><Label className="text-xs font-bold text-gray-400 uppercase">Embed URL (replaces body with iframe)</Label><Input value={embedUrl} onChange={(e) => setEC({ embedUrl: e.target.value })} className="mt-1" placeholder="https://youtube.com/embed/... (optional)" /></div>
 
@@ -379,6 +582,19 @@ function SectionPreview({ section }: { section: SectionConfig }) {
   if (section.type === 'custom-embed') {
     if (!section.embedUrl) return <EmptyPreview text="Enter an embed URL to see it here" />;
     return <div className="bg-white rounded-2xl shadow-2xl overflow-hidden aspect-video"><iframe src={section.embedUrl} className="w-full h-full" allowFullScreen /></div>;
+  }
+  if (section.type === 'custom-canvas') {
+    if (!ec.canvasImages || ec.canvasImages.length === 0) return <EmptyPreview text="Upload images to see them on the canvas" />;
+    const bgColor = ec.canvasBackgroundColor || 'transparent';
+    return (
+      <div className="w-full h-full rounded-2xl shadow-2xl relative overflow-hidden" style={{ backgroundColor: bgColor, minHeight: '400px' }}>
+        {ec.canvasImages.sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1)).map(img => (
+          <div key={img.id} className="absolute" style={{ left: `${img.x}%`, top: `${img.y}%`, width: `${img.width}%`, height: `${img.height}%`, transform: `rotate(${img.rotation || 0}deg)`, zIndex: img.zIndex || 1 }}>
+            <img src={img.url} alt="" className="w-full h-full" style={{ objectFit: img.objectFit || 'contain' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          </div>
+        ))}
+      </div>
+    );
   }
   if (ec.embedUrl) {
     return (

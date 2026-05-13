@@ -4,9 +4,11 @@ import { motion } from 'motion/react';
 import { projectId, publicAnonKey } from '/utils/supabase/info';
 import { FilmstripTimeline } from './filmstrip-timeline';
 import { ViewerOverlay } from './viewer-overlay';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { LearnMoreSlide, LearnMoreConfig } from './learn-more-slide';
+import { ChevronLeft, ChevronRight, Maximize, Minimize, X } from 'lucide-react';
 import { textStyleToCSS } from './admin/landing-page-editor';
 import type { TextStyle } from './admin/landing-page-editor';
+import { useNavigate } from 'react-router';
 
 interface ContentSectionsProps {
   userType: UserType;
@@ -24,7 +26,8 @@ type ContentSection =
   | 'investor-info' 
   | 'general-info'
   | 'custom-html'
-  | 'custom-embed';
+  | 'custom-embed'
+  | 'custom-canvas';
 
 interface EmbedConfig {
   type: 'iframe' | 'html' | 'markdown';
@@ -88,6 +91,7 @@ interface SectionData {
     bulletPoints?: string[];
     ctaText?: string;
     ctaUrl?: string;
+    ctaLinkType?: 'external' | 'internal' | 'scroll' | 'slide'; // New: type of link
     imageUrl?: string;
     embedUrl?: string;
     headingStyle?: TextStyle;
@@ -95,25 +99,44 @@ interface SectionData {
     bodyStyle?: TextStyle;
     bulletTitleStyle?: TextStyle;
     ctaStyle?: TextStyle;
+    canvasImages?: Array<{
+      id: string;
+      url: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      rotation?: number;
+      zIndex?: number;
+      objectFit?: 'contain' | 'cover' | 'fill' | 'none';
+    }>;
+    canvasBackgroundColor?: string;
+    pdfUrl?: string;
   };
 }
 
 export function ContentSections({ userType, journeyImage, creditsImage, embedded = false }: ContentSectionsProps) {
-  const [sections, setSections] = useState<SectionData[]>([]);
+  const [defaultSections, setDefaultSections] = useState<SectionData[]>([]);
+  const [allAvailableSections, setAllAvailableSections] = useState<SectionData[]>([]);
   const [embedConfigs, setEmbedConfigs] = useState<Record<string, EmbedConfig>>({});
+  const [learnMoreConfig, setLearnMoreConfig] = useState<LearnMoreConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
+  const [dragX, setDragX] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchAccessControl();
     fetchEmbedConfigs();
+    fetchLearnMoreConfig();
   }, [userType]);
 
   const handleSectionChange = (index: number) => {
     // Cyclic navigation: wrap around
     if (index < 0) {
-      setCurrentSectionIndex(sections.length - 1);
-    } else if (index >= sections.length) {
+      setCurrentSectionIndex(totalSlides - 1);
+    } else if (index >= totalSlides) {
       setCurrentSectionIndex(0);
     } else {
       setCurrentSectionIndex(index);
@@ -133,10 +156,23 @@ export function ContentSections({ userType, journeyImage, creditsImage, embedded
       );
 
       let availableSections: SectionData[] = [];
+      let allSections: SectionData[] = [];
       
       if (sectionsResponse.ok) {
         const sectionsData = await sectionsResponse.json();
         const sectionConfigs = sectionsData.sections || [];
+        
+        // Map ALL enabled sections (for Learn More menu)
+        allSections = sectionConfigs
+          .filter((s: any) => s.enabled)
+          .map((s: any) => ({
+            type: s.type,
+            title: s.title,
+            customContent: s.customContent,
+            embedUrl: s.embedUrl,
+            layout: s.layout,
+            editableContent: s.editableContent,
+          }));
         
         // Filter sections: only enabled ones, visible to current user type, and ordered
         const filteredSections = sectionConfigs
@@ -175,18 +211,38 @@ export function ContentSections({ userType, journeyImage, creditsImage, embedded
             type,
             title: getSectionTitle(type),
           }));
+          
+          // For fallback, create all sections
+          const allTypes: ContentSection[] = ['studio-demo', 'dashboard-demo', 'camera-overlay-demo', 'beta-info', 'parent-educator-info', 'investor-info', 'general-info'];
+          allSections = allTypes.map((type: ContentSection) => ({
+            type,
+            title: getSectionTitle(type),
+          }));
         } else {
           availableSections = [{
+            type: 'general-info',
+            title: 'Getting Started',
+          }];
+          allSections = [{
             type: 'general-info',
             title: 'Getting Started',
           }];
         }
       }
 
-      setSections(availableSections);
+      setDefaultSections(availableSections);
+      // Remove duplicates from allSections by using a Map
+      const uniqueAllSections = Array.from(
+        new Map(allSections.map(s => [s.type, s])).values()
+      );
+      setAllAvailableSections(uniqueAllSections.length > 0 ? uniqueAllSections : availableSections);
     } catch (error) {
       console.error('Error fetching access control:', error);
-      setSections([{
+      setDefaultSections([{
+        type: 'general-info',
+        title: 'Getting Started',
+      }]);
+      setAllAvailableSections([{
         type: 'general-info',
         title: 'Getting Started',
       }]);
@@ -226,6 +282,29 @@ export function ContentSections({ userType, journeyImage, creditsImage, embedded
     }
   };
 
+  const fetchLearnMoreConfig = async () => {
+    try {
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-a8ba6828/learn-more-config`,
+        {
+          headers: {
+            'Authorization': `Bearer ${publicAnonKey}`,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setLearnMoreConfig(data.config);
+      } else {
+        setLearnMoreConfig(null);
+      }
+    } catch (error) {
+      console.error('Error fetching learn more config:', error);
+      setLearnMoreConfig(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900">
@@ -236,136 +315,287 @@ export function ContentSections({ userType, journeyImage, creditsImage, embedded
     );
   }
 
-  const currentSectionData = sections[currentSectionIndex];
+  // Construct sections: default sections + Learn More slide + added sections
+  const allSections = [...defaultSections];
+  const learnMoreIndex = defaultSections.length; // Learn More slide position
+  const totalSlides = allSections.length + 1; // +1 for Learn More slide
+  
+  const currentSectionData = allSections[currentSectionIndex];
+  const isLearnMoreSlide = currentSectionIndex === learnMoreIndex;
 
   return (
     <div className={`${embedded ? 'absolute' : 'fixed'} inset-0 bg-gray-900 flex flex-col`}>
-      {/* Top Navigation Bar — slim */}
-      <div className="bg-gray-950 border-b border-gray-800 px-3 py-1 flex items-center justify-between z-50 flex-shrink-0">
-        <button
-          onClick={() => window.location.href = '/'}
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-lg transition-all shadow-lg"
-        >
-          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-          </svg>
-          <span className="text-white font-bold text-xs" style={{ fontFamily: 'Fredoka, sans-serif' }}>
-            Menu
-          </span>
-        </button>
+      {/* Top Navigation Bar — slim (hidden in fullscreen) */}
+      {!isFullscreen && (
+        <div className="bg-gray-950 border-b border-gray-800 px-3 py-1 flex items-center justify-between z-50 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/contact')}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 rounded-lg transition-all shadow-lg"
+            >
+              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+              <span className="text-white font-bold text-xs" style={{ fontFamily: 'Fredoka, sans-serif' }}>
+                Contact
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                navigate('/explore');
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-lg transition-all shadow-lg"
+            >
+              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              </svg>
+              <span className="text-white font-bold text-xs" style={{ fontFamily: 'Fredoka, sans-serif' }}>
+                Explore
+              </span>
+            </button>
+          </div>
 
-        <div className="text-white text-xs font-bold" style={{ fontFamily: 'Fredoka, sans-serif' }}>
-          The Frame Game
+          <div className="text-white text-xs font-bold" style={{ fontFamily: 'Fredoka, sans-serif' }}>
+            The Frame Game
+          </div>
+          
+          <div className="text-gray-400 text-xs" style={{ fontFamily: 'Comic Neue, cursive' }}>
+            <span className="text-purple-400 font-bold">{getUserTypeLabel(userType)}</span>
+          </div>
         </div>
-        
-        <div className="text-gray-400 text-xs" style={{ fontFamily: 'Comic Neue, cursive' }}>
-          <span className="text-purple-400 font-bold">{getUserTypeLabel(userType)}</span>
-        </div>
-      </div>
+      )}
 
       {/* ─── Main Viewer Area — takes maximum space ─── */}
       <div className="flex-1 overflow-hidden bg-gray-900 relative">
-        <ViewerOverlay 
-          currentSection={currentSectionIndex}
-          totalSections={sections.length}
-          sectionTitle={currentSectionData?.title || 'Content'}
-        />
-
-        {/* Welcome Banner for first section */}
-        {currentSectionIndex === 0 && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 w-full max-w-sm px-4">
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white/90 backdrop-blur-sm rounded-xl p-2.5 shadow-2xl text-center"
-            >
-              <h1 className="text-lg font-bold" style={{ fontFamily: 'Fredoka, sans-serif' }}>
-                <span className="bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  Welcome to The Frame Game! 🎬
-                </span>
-              </h1>
-              <p className="text-xs text-gray-600" style={{ fontFamily: 'Comic Neue, cursive' }}>
-                Viewing as <span className="font-bold text-purple-600">{getUserTypeLabel(userType)}</span>
-              </p>
-            </motion.div>
-          </div>
+        {!isFullscreen && (
+          <ViewerOverlay 
+            currentSection={currentSectionIndex}
+            totalSections={totalSlides}
+            sectionTitle={isLearnMoreSlide ? 'Explore More' : (currentSectionData?.title || 'Content')}
+          />
         )}
 
-        {/* ── Slide Display: one slide at a time, centered ── */}
-        <div className="absolute inset-0 flex items-center justify-center p-4 md:p-8">
-          {sections.map((sectionData, index) => {
-            const isCenter = index === currentSectionIndex;
-            const layout = sectionData.layout || {};
-            const cardW = layout.cardWidth || 85;  // default 85% width
-            const ar = layout.aspectRatio || 'auto';
-            const padPx = layout.cardPadding ?? 16;
-            const hAlign = layout.horizontalAlign || 'center';
-            const vAlign = layout.verticalAlign || 'center';
-            const scalePct = layout.scale || 100;
+        {/* ── Filmstrip Carousel OR Fullscreen View ── */}
+        {!isFullscreen ? (
+          <motion.div 
+            className="absolute inset-0 flex items-center justify-center"
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.2}
+            onDragEnd={(e, info) => {
+              const threshold = 100;
+              if (info.offset.x > threshold) {
+                handleSectionChange(currentSectionIndex - 1);
+              } else if (info.offset.x < -threshold) {
+                handleSectionChange(currentSectionIndex + 1);
+              }
+            }}
+          >
+            <div className="flex items-center justify-center h-full gap-4 md:gap-8">
+              {Array.from({ length: totalSlides }).map((_, index) => {
+                const offset = index - currentSectionIndex;
+                const isCenter = offset === 0;
+                const isPrev = offset === -1;
+                const isNext = offset === 1;
+                const isVisible = Math.abs(offset) <= 1;
 
-            // Alignment classes for the flex container
-            const hCls = hAlign === 'left' ? 'justify-start' : hAlign === 'right' ? 'justify-end' : 'justify-center';
-            const vCls = vAlign === 'top' ? 'items-start' : vAlign === 'bottom' ? 'items-end' : 'items-center';
+                if (!isVisible) return null;
 
-            // Aspect ratio CSS value
-            const arValue = ar === '16:9' ? '16/9' : ar === '4:3' ? '4/3' : ar === '1:1' ? '1/1' : ar === '21:9' ? '21/9' : undefined;
+                // Check if this is the Learn More slide
+                const isThisLearnMoreSlide = index === learnMoreIndex;
+                const sectionData = isThisLearnMoreSlide ? null : allSections[index];
 
-            return (
-              <motion.div
-                key={index}
-                className={`absolute inset-0 flex ${vCls} ${hCls} p-4 md:p-6`}
-                initial={false}
-                animate={{
-                  opacity: isCenter ? 1 : 0,
-                  scale: isCenter ? 1 : 0.9,
-                  x: isCenter ? 0 : index < currentSectionIndex ? -60 : 60,
-                }}
-                transition={{ duration: 0.35, ease: 'easeOut' }}
-                style={{ pointerEvents: isCenter ? 'auto' : 'none', zIndex: isCenter ? 10 : 0 }}
-              >
-                <div
-                  className="overflow-auto rounded-2xl"
-                  style={{
-                    width: `${cardW}%`,
-                    maxWidth: '1400px',
-                    maxHeight: '100%',
-                    ...(arValue ? { aspectRatio: arValue } : {}),
-                    padding: `${padPx}px`,
-                    transform: `scale(${scalePct / 100})`,
-                    transformOrigin: `${hAlign} ${vAlign}`,
-                    backgroundColor: layout.backgroundColor || undefined,
-                    borderRadius: layout.borderRadius || undefined,
-                  }}
-                >
-                  {renderSection(sectionData, journeyImage, creditsImage, embedConfigs[sectionData.type])}
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
+                const layout = sectionData?.layout || {};
+                const cardW = layout.cardWidth || 85;
+                const ar = layout.aspectRatio || 'auto';
+                const padPx = layout.cardPadding ?? 16;
+                const hAlign = layout.horizontalAlign || 'center';
+                const vAlign = layout.verticalAlign || 'center';
+                const scalePct = layout.scale || 100;
 
-        {/* Left/Right click zones for navigation */}
-        <button
-          onClick={() => handleSectionChange(currentSectionIndex - 1)}
-          className="absolute left-0 top-0 bottom-0 w-12 z-30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-gradient-to-r from-black/30 to-transparent"
-        >
-          <ChevronLeft className="w-6 h-6 text-white/70" />
-        </button>
-        <button
-          onClick={() => handleSectionChange(currentSectionIndex + 1)}
-          className="absolute right-0 top-0 bottom-0 w-12 z-30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-gradient-to-l from-black/30 to-transparent"
-        >
-          <ChevronRight className="w-6 h-6 text-white/70" />
-        </button>
+                // Aspect ratio CSS value
+                const arValue = ar === '16:9' ? '16/9' : ar === '4:3' ? '4/3' : ar === '1:1' ? '1/1' : ar === '21:9' ? '21/9' : undefined;
+
+                // Calculate positioning and effects for filmstrip
+                let xOffset = 0;
+                let scale = 1;
+                let blur = 0;
+                let opacity = 1;
+                let zIndex = 10;
+                
+                if (isCenter) {
+                  xOffset = 0;
+                  scale = 1;
+                  blur = 0;
+                  opacity = 1;
+                  zIndex = 20;
+                } else if (isPrev) {
+                  xOffset = -70; // percentage
+                  scale = 0.75;
+                  blur = 3;
+                  opacity = 0.4;
+                  zIndex = 10;
+                } else if (isNext) {
+                  xOffset = 70; // percentage
+                  scale = 0.75;
+                  blur = 3;
+                  opacity = 0.4;
+                  zIndex = 10;
+                }
+
+                return (
+                  <motion.div
+                    key={index}
+                    className="absolute flex items-center justify-center"
+                    initial={false}
+                    animate={{
+                      x: `${xOffset}%`,
+                      scale,
+                      opacity,
+                      filter: `blur(${blur}px)`,
+                    }}
+                    transition={{ 
+                      duration: 0.5, 
+                      ease: [0.32, 0.72, 0, 1]
+                    }}
+                    style={{ 
+                      pointerEvents: isCenter ? 'auto' : 'none',
+                      zIndex,
+                      width: '85%',
+                      maxWidth: '1400px',
+                      height: '90%',
+                    }}
+                  >
+                    <div
+                      className="overflow-hidden rounded-2xl shadow-2xl w-full h-full cursor-pointer relative group"
+                      style={{
+                        ...(arValue && !isThisLearnMoreSlide ? { aspectRatio: arValue } : {}),
+                        padding: isThisLearnMoreSlide ? '0' : `${padPx}px`,
+                        transform: isThisLearnMoreSlide ? 'scale(1)' : `scale(${scalePct / 100})`,
+                        transformOrigin: `${hAlign} ${vAlign}`,
+                        backgroundColor: isThisLearnMoreSlide ? '#1a1a2e' : (layout.backgroundColor || undefined),
+                        borderRadius: layout.borderRadius || undefined,
+                        border: isCenter ? '4px solid rgba(168, 85, 247, 0.5)' : '2px solid rgba(255, 255, 255, 0.1)',
+                      }}
+                      onClick={() => {
+                        if (!isCenter) {
+                          // Navigate to adjacent slide
+                          handleSectionChange(index);
+                        }
+                      }}
+                    >
+                      {isThisLearnMoreSlide ? (
+                        <>
+                          <LearnMoreSlide config={learnMoreConfig || undefined} />
+                          
+                          {/* Fullscreen Button Overlay - Only on Center Slide */}
+                          {isCenter && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsFullscreen(true);
+                              }}
+                              className="absolute top-4 right-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full p-2.5 shadow-lg transition-opacity z-20 hover:scale-110"
+                              title="Enter fullscreen"
+                            >
+                              <Maximize className="w-5 h-5 text-white" />
+                            </button>
+                          )}
+                        </>
+                      ) : sectionData ? (
+                        <>
+                          {renderSection(sectionData, journeyImage, creditsImage, embedConfigs[sectionData.type])}
+                          
+                          {/* Fullscreen Button Overlay - Only on Center Slide */}
+                          {isCenter && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsFullscreen(true);
+                              }}
+                              className="absolute top-4 right-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full p-2.5 shadow-lg transition-opacity z-20 hover:scale-110"
+                              title="Enter fullscreen"
+                            >
+                              <Maximize className="w-5 h-5 text-white" />
+                            </button>
+                          )}
+                        </>
+                      ) : null}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        ) : (
+          /* ── Fullscreen View ── */
+          <motion.div
+            className="absolute inset-0 bg-black z-50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+            onClick={() => setIsFullscreen(false)}
+          >
+            <div className="w-full h-full p-4 md:p-8 flex items-center justify-center">
+              <div className="w-full h-full max-w-7xl">
+                {isLearnMoreSlide ? (
+                  <LearnMoreSlide config={learnMoreConfig || undefined} />
+                ) : currentSectionData ? (
+                  renderSection(
+                    currentSectionData,
+                    journeyImage,
+                    creditsImage,
+                    embedConfigs[currentSectionData.type]
+                  )
+                ) : null}
+              </div>
+            </div>
+            {/* Exit hint */}
+            <div className="absolute top-4 right-4 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 text-white text-xs flex items-center gap-2"
+              style={{ fontFamily: 'Fredoka, sans-serif' }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Tap to exit fullscreen
+            </div>
+          </motion.div>
+        )}
+
+        {/* Left/Right click zones for navigation (hidden in fullscreen) */}
+        {!isFullscreen && (
+          <>
+            <button
+              onClick={() => handleSectionChange(currentSectionIndex - 1)}
+              className="absolute left-0 top-0 bottom-0 w-16 md:w-24 z-30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-gradient-to-r from-black/40 to-transparent"
+            >
+              <ChevronLeft className="w-8 h-8 text-white/90 drop-shadow-lg" />
+            </button>
+            <button
+              onClick={() => handleSectionChange(currentSectionIndex + 1)}
+              className="absolute right-0 top-0 bottom-0 w-16 md:w-24 z-30 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-gradient-to-l from-black/40 to-transparent"
+            >
+              <ChevronRight className="w-8 h-8 text-white/90 drop-shadow-lg" />
+            </button>
+          </>
+        )}
       </div>
 
-      {/* ─── Timeline at Bottom ─── */}
-      <FilmstripTimeline
-        sections={sections.map(s => s.type)}
-        currentSection={currentSectionIndex}
-        onSectionChange={handleSectionChange}
-        sectionTitles={sections.map(s => s.title)}
-      />
+      {/* ─── Timeline at Bottom (hidden in fullscreen) ─── */}
+      {!isFullscreen && (
+        <FilmstripTimeline
+          sections={[
+            ...allSections.map(s => s.type),
+            'general-info' as ContentSection // Learn More slide placeholder
+          ]}
+          currentSection={currentSectionIndex}
+          onSectionChange={handleSectionChange}
+          sectionTitles={[
+            ...allSections.map(s => s.title),
+            'Explore More' // Learn More slide title
+          ]}
+        />
+      )}
     </div>
   );
 }
@@ -397,6 +627,13 @@ function renderSection(sectionData: SectionData, journeyImage: string, creditsIm
     );
     if (layout) return applyLayoutWrapper(embedContent, layout);
     return embedContent;
+  }
+
+  // Handle custom canvas sections
+  if (section === 'custom-canvas') {
+    const canvasContent = <CustomCanvasSection editableContent={editableContent} />;
+    if (layout) return applyLayoutWrapper(canvasContent, layout);
+    return canvasContent;
   }
 
   // For built-in section types — always render with the unified card renderer
@@ -497,12 +734,46 @@ function UnifiedSectionCard({ sectionType, editableContent }: { sectionType: Con
   const bodyText = ec.bodyText || defaults?.bodyText || '';
   const ctaText = ec.ctaText || defaults?.ctaText || '';
   const ctaUrl = ec.ctaUrl || '';
+  const ctaLinkType = ec.ctaLinkType || 'external';
   const imageUrl = ec.imageUrl || '';
 
   const bodyLines = bodyText.split('\n').filter((l: string) => l.trim());
 
+  // Helper function to handle button clicks based on link type
+  const handleCtaClick = (e: React.MouseEvent) => {
+    if (!ctaUrl) return;
+
+    switch (ctaLinkType) {
+      case 'external':
+        // Opens in new tab
+        window.open(ctaUrl, '_blank', 'noopener,noreferrer');
+        e.preventDefault();
+        break;
+      case 'internal':
+        // Navigate to internal page
+        window.location.href = ctaUrl;
+        e.preventDefault();
+        break;
+      case 'scroll':
+        // Scroll to element with ID
+        const element = document.getElementById(ctaUrl);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        e.preventDefault();
+        break;
+      case 'slide':
+        // Navigate to content viewer
+        const slideIndex = parseInt(ctaUrl) || 0;
+        // Trigger navigation by setting URL hash
+        window.location.hash = `slide-${slideIndex}`;
+        e.preventDefault();
+        break;
+    }
+  };
+
   return (
-    <div className={`bg-gradient-to-br ${theme.bg} rounded-3xl p-6 md:p-8 shadow-2xl h-full max-h-full overflow-auto flex flex-col`}>
+    <div className={`bg-gradient-to-br ${theme.bg} rounded-3xl p-6 md:p-8 shadow-2xl h-full flex flex-col overflow-hidden`}>
       {heading && (
         <h2 className="text-2xl md:text-3xl mb-2 text-center flex-shrink-0" style={headingCSS}>
           {!ec.headingStyle ? (
@@ -511,46 +782,46 @@ function UnifiedSectionCard({ sectionType, editableContent }: { sectionType: Con
         </h2>
       )}
       {subheading && (
-        <p className="text-sm md:text-base text-center mb-5 flex-shrink-0" style={subheadingCSS}>
+        <p className="text-sm md:text-base text-center mb-4 flex-shrink-0" style={subheadingCSS}>
           {subheading}
         </p>
       )}
       {imageUrl && (
-        <div className="mb-5 flex-shrink-0 flex justify-center">
-          <img src={imageUrl} alt="" className="max-h-48 md:max-h-64 rounded-2xl shadow-lg object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        <div className="mb-4 flex-shrink-0 flex justify-center">
+          <img src={imageUrl} alt="" className="max-h-40 md:max-h-48 rounded-2xl shadow-lg object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         </div>
       )}
       {bodyLines.length > 0 && (
-        <div className="bg-white rounded-2xl p-5 shadow-lg mb-5 space-y-2.5 flex-shrink-0">
+        <div className="bg-white rounded-2xl p-4 md:p-5 shadow-lg mb-4 space-y-2 flex-1 min-h-0 overflow-y-auto">
           {bodyLines.map((line: string, i: number) => {
             const emojiMatch = line.match(/^(\p{Extended_Pictographic}+)\s*(.*)/u);
             if (emojiMatch) {
               const [, emoji, rest] = emojiMatch;
-              const dashIdx = rest.indexOf(' \u2014 ');
+              const dashIdx = rest.indexOf(' — ');
               const dashIdx2 = rest.indexOf(' - ');
               const splitIdx = dashIdx >= 0 ? dashIdx : dashIdx2 >= 0 ? dashIdx2 : -1;
-              const sep = dashIdx >= 0 ? ' \u2014 ' : ' - ';
+              const sep = dashIdx >= 0 ? ' — ' : ' - ';
               if (splitIdx >= 0) {
                 const title = rest.substring(0, splitIdx);
                 const desc = rest.substring(splitIdx + sep.length);
                 return (
-                  <div key={i} className="flex items-start gap-3">
-                    <span className="text-xl flex-shrink-0">{emoji}</span>
+                  <div key={i} className="flex items-start gap-2.5">
+                    <span className="text-lg md:text-xl flex-shrink-0">{emoji}</span>
                     <div>
-                      <span className="text-sm" style={bulletTitleCSS}>{title}</span>
-                      <span className="text-sm" style={bodyCSS}> &mdash; {desc}</span>
+                      <span className="text-xs md:text-sm" style={bulletTitleCSS}>{title}</span>
+                      <span className="text-xs md:text-sm" style={bodyCSS}> &mdash; {desc}</span>
                     </div>
                   </div>
                 );
               }
               return (
-                <div key={i} className="flex items-start gap-3">
-                  <span className="text-xl flex-shrink-0">{emoji}</span>
-                  <span className="text-sm" style={bodyCSS}>{rest}</span>
+                <div key={i} className="flex items-start gap-2.5">
+                  <span className="text-lg md:text-xl flex-shrink-0">{emoji}</span>
+                  <span className="text-xs md:text-sm" style={bodyCSS}>{rest}</span>
                 </div>
               );
             }
-            return <p key={i} className="text-sm" style={bodyCSS}>{line}</p>;
+            return <p key={i} className="text-xs md:text-sm" style={bodyCSS}>{line}</p>;
           })}
         </div>
       )}
@@ -559,7 +830,8 @@ function UnifiedSectionCard({ sectionType, editableContent }: { sectionType: Con
           {ctaUrl ? (
             <a href={ctaUrl} target="_blank" rel="noopener noreferrer"
               className={`inline-block px-8 py-3 bg-gradient-to-r ${theme.text} rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-105`}
-              style={ctaCSS}>
+              style={ctaCSS}
+              onClick={handleCtaClick}>
               {ctaText}
             </a>
           ) : (
@@ -584,97 +856,267 @@ function applyLayoutWrapper(content: React.ReactNode, layout: LayoutConfig) {
   );
 }
 
-function CustomEmbedSection({ config }: { config: EmbedConfig }) {
-  const layout = config.layout || {};
-  const scale = layout.scale || 100;
-  const horizontalAlign = layout.horizontalAlign || 'center';
-  const verticalAlign = layout.verticalAlign || 'center';
-  const maxWidth = layout.maxWidth || '100%';
-  const maxHeight = layout.maxHeight || '100%';
-  const objectFit = layout.objectFit || 'contain';
+function CustomCanvasSection({ editableContent }: { editableContent?: SectionData['editableContent'] }) {
+  const [pdfPage, setPdfPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isPdfFullscreen, setIsPdfFullscreen] = useState(false);
+  
+  const bgColor = editableContent?.canvasBackgroundColor || '#ffffff';
+  const canvasImages = editableContent?.canvasImages || [];
+  const pdfUrl = editableContent?.pdfUrl;
 
-  const alignmentClasses = {
-    horizontal: {
-      left: 'justify-start',
-      center: 'justify-center',
-      right: 'justify-end',
-    },
-    vertical: {
-      top: 'items-start',
-      center: 'items-center',
-      bottom: 'items-end',
-    },
+  const togglePdfFullscreen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsPdfFullscreen(!isPdfFullscreen);
   };
 
-  return (
-    <div className={`bg-gradient-to-br from-purple-100 to-indigo-100 rounded-3xl p-4 md:p-6 shadow-2xl h-full max-h-full overflow-hidden flex flex-col ${alignmentClasses.vertical[verticalAlign]} ${alignmentClasses.horizontal[horizontalAlign]}`}>
-      {config.title && (
-        <h2 
-          className="text-2xl md:text-3xl font-bold mb-2 flex-shrink-0 w-full text-center"
-          style={{ fontFamily: 'Fredoka, sans-serif' }}
-        >
-          <span className="bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
-            {config.title}
-          </span>
-        </h2>
-      )}
-      
-      {config.description && (
-        <p className="text-sm md:text-base text-gray-700 mb-3 flex-shrink-0 w-full text-center" style={{ fontFamily: 'Comic Neue, cursive' }}>
-          {config.description}
-        </p>
-      )}
-
-      <div 
-        className="bg-white rounded-2xl p-2 shadow-lg overflow-hidden flex items-center justify-center"
-        style={{
-          maxWidth,
-          maxHeight,
-          width: objectFit === 'fill' ? '100%' : 'auto',
-          height: objectFit === 'fill' ? '100%' : 'auto',
-        }}
-      >
-        <div
-          style={{
-            transform: `scale(${scale / 100})`,
-            transformOrigin: 'center center',
-            width: '100%',
-            height: '100%',
-          }}
-        >
-          {config.type === 'iframe' && config.url && (
-            <iframe
-              src={config.url}
-              className="w-full h-full rounded-xl border-0"
-              style={{
-                objectFit: objectFit as any,
-              }}
-              allowFullScreen={config.allowFullscreen}
-              title={config.title || 'Embedded Content'}
-            />
-          )}
-
-          {config.type === 'html' && config.htmlContent && (
-            <div
-              className="w-full h-full rounded-xl p-4 overflow-auto"
-              dangerouslySetInnerHTML={{ __html: config.htmlContent }}
-            />
-          )}
+  // If only PDF, show PDF viewer
+  if (pdfUrl && canvasImages.length === 0) {
+    return (
+      <>
+        <div className="w-full h-full relative rounded-2xl shadow-2xl overflow-hidden" style={{ backgroundColor: bgColor }}>
+          <iframe
+            src={`${pdfUrl}#page=${pdfPage}&view=FitV`}
+            className="w-full h-full"
+            title="PDF Document"
+            style={{ minHeight: '70vh' }}
+          />
+          {/* PDF Navigation Controls */}
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full px-4 py-2 shadow-lg flex items-center gap-3 z-10">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setPdfPage(Math.max(1, pdfPage - 1)); }} 
+              className="text-white hover:scale-110 transition-transform disabled:opacity-50"
+              disabled={pdfPage <= 1}
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <span className="text-white font-bold text-sm" style={{ fontFamily: 'Fredoka, sans-serif' }}>
+              Page {pdfPage}
+            </span>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setPdfPage(pdfPage + 1); }} 
+              className="text-white hover:scale-110 transition-transform"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+            <div className="w-px h-6 bg-white/30 mx-1" />
+            <button
+              onClick={togglePdfFullscreen}
+              className="text-white hover:scale-110 transition-transform"
+              title="Toggle fullscreen"
+            >
+              {isPdfFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+            </button>
+          </div>
         </div>
+
+        {/* PDF Fullscreen Overlay - Optimized for mobile portrait */}
+        {isPdfFullscreen && (
+          <motion.div
+            className="fixed inset-0 bg-black z-[100] flex flex-col"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            <iframe
+              src={`${pdfUrl}#page=${pdfPage}&view=FitV&scrollbar=0`}
+              className="w-full flex-1"
+              title="PDF Document Fullscreen"
+            />
+            {/* Fullscreen PDF Navigation */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full px-5 py-3 shadow-2xl flex items-center gap-4 z-10">
+              <button 
+                onClick={() => setPdfPage(Math.max(1, pdfPage - 1))} 
+                className="text-white hover:scale-110 transition-transform disabled:opacity-50"
+                disabled={pdfPage <= 1}
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <span className="text-white font-bold text-base" style={{ fontFamily: 'Fredoka, sans-serif' }}>
+                Page {pdfPage}
+              </span>
+              <button 
+                onClick={() => setPdfPage(pdfPage + 1)} 
+                className="text-white hover:scale-110 transition-transform"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+              <div className="w-px h-8 bg-white/30 mx-1" />
+              <button
+                onClick={() => setIsPdfFullscreen(false)}
+                className="text-white hover:scale-110 transition-transform flex items-center gap-2"
+              >
+                <Minimize className="w-6 h-6" />
+                <span className="text-sm hidden sm:inline" style={{ fontFamily: 'Fredoka, sans-serif' }}>Exit</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </>
+    );
+  }
+
+  // If only images, show canvas with images
+  if (canvasImages.length > 0 && !pdfUrl) {
+    return (
+      <div className="w-full h-full rounded-2xl shadow-2xl relative overflow-hidden" style={{ backgroundColor: bgColor, minHeight: '400px' }}>
+        {canvasImages.sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1)).map(img => (
+          <div 
+            key={img.id} 
+            className="absolute" 
+            style={{ 
+              left: `${img.x}%`, 
+              top: `${img.y}%`, 
+              width: `${img.width}%`, 
+              height: `${img.height}%`, 
+              transform: `rotate(${img.rotation || 0}deg)`, 
+              zIndex: img.zIndex || 1 
+            }}
+          >
+            <img 
+              src={img.url} 
+              alt="" 
+              className="w-full h-full" 
+              style={{ objectFit: img.objectFit || 'contain' }} 
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} 
+            />
+          </div>
+        ))}
       </div>
+    );
+  }
+
+  // If both PDF and images, show split view with PDF on left, images on right
+  if (pdfUrl && canvasImages.length > 0) {
+    return (
+      <>
+        <div className="w-full h-full rounded-2xl shadow-2xl overflow-hidden bg-gray-900 flex flex-col md:flex-row gap-2 p-2">
+          {/* PDF Section */}
+          <div className="flex-1 relative rounded-xl overflow-hidden" style={{ backgroundColor: bgColor }}>
+            <iframe
+              src={`${pdfUrl}#page=${pdfPage}`}
+              className="w-full h-full"
+              title="PDF Document"
+            />
+            {/* PDF Navigation */}
+            <div className="absolute bottom-3 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-full px-3 py-1.5 shadow-lg flex items-center gap-2 z-10">
+              <button 
+                onClick={(e) => { e.stopPropagation(); setPdfPage(Math.max(1, pdfPage - 1)); }} 
+                className="text-white hover:scale-110 transition-transform disabled:opacity-50"
+                disabled={pdfPage <= 1}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-white font-bold text-xs" style={{ fontFamily: 'Fredoka, sans-serif' }}>
+                Page {pdfPage}
+              </span>
+              <button 
+                onClick={(e) => { e.stopPropagation(); setPdfPage(pdfPage + 1); }} 
+                className="text-white hover:scale-110 transition-transform"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <div className="w-px h-5 bg-white/30 mx-0.5" />
+              <button
+                onClick={togglePdfFullscreen}
+                className="text-white hover:scale-110 transition-transform"
+                title="Toggle fullscreen"
+              >
+                <Maximize className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Canvas Images Section */}
+          <div className="flex-1 rounded-xl shadow-xl relative overflow-hidden" style={{ backgroundColor: bgColor }}>
+            {canvasImages.sort((a, b) => (a.zIndex || 1) - (b.zIndex || 1)).map(img => (
+              <div 
+                key={img.id} 
+                className="absolute" 
+                style={{ 
+                  left: `${img.x}%`, 
+                  top: `${img.y}%`, 
+                  width: `${img.width}%`, 
+                  height: `${img.height}%`, 
+                  transform: `rotate(${img.rotation || 0}deg)`, 
+                  zIndex: img.zIndex || 1 
+                }}
+              >
+                <img 
+                  src={img.url} 
+                  alt="" 
+                  className="w-full h-full" 
+                  style={{ objectFit: img.objectFit || 'contain' }} 
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} 
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* PDF Fullscreen Overlay */}
+        {isPdfFullscreen && (
+          <motion.div
+            className="fixed inset-0 bg-black z-[100]"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            <iframe
+              src={`${pdfUrl}#page=${pdfPage}`}
+              className="w-full h-full"
+              title="PDF Document Fullscreen"
+            />
+            {/* Fullscreen PDF Navigation */}
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-full px-5 py-3 shadow-2xl flex items-center gap-4 z-10">
+              <button 
+                onClick={() => setPdfPage(Math.max(1, pdfPage - 1))} 
+                className="text-white hover:scale-110 transition-transform disabled:opacity-50"
+                disabled={pdfPage <= 1}
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <span className="text-white font-bold text-base" style={{ fontFamily: 'Fredoka, sans-serif' }}>
+                Page {pdfPage}
+              </span>
+              <button 
+                onClick={() => setPdfPage(pdfPage + 1)} 
+                className="text-white hover:scale-110 transition-transform"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+              <div className="w-px h-8 bg-white/30 mx-1" />
+              <button
+                onClick={() => setIsPdfFullscreen(false)}
+                className="text-white hover:scale-110 transition-transform flex items-center gap-2"
+              >
+                <Minimize className="w-6 h-6" />
+                <span className="text-sm" style={{ fontFamily: 'Fredoka, sans-serif' }}>Exit</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </>
+    );
+  }
+
+  // Empty state
+  return (
+    <div className="w-full h-full rounded-2xl shadow-2xl bg-gray-800 border-2 border-dashed border-gray-600 flex items-center justify-center">
+      <p className="text-gray-500 text-lg" style={{ fontFamily: 'Comic Neue, cursive' }}>
+        No content available
+      </p>
     </div>
   );
 }
 
 function getUserTypeLabel(type: UserType): string {
   switch (type) {
-    case 'filmmaker': return 'Filmmaker';
     case 'parent': return 'Parent';
     case 'educator': return 'Educator';
-    case 'teen': return 'Teen';
+    case 'student': return 'Student';
     case 'investor': return 'Investor';
     case 'donor': return 'Donor';
-    case 'just-curious': return 'Explorer';
     default: return 'Member';
   }
 }

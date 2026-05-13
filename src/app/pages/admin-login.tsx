@@ -80,9 +80,6 @@ export function AdminLogin() {
               className="w-full px-4 py-3 border-3 border-gray-300 rounded-2xl focus:outline-none focus:ring-4 focus:ring-purple-400 focus:border-purple-400 text-lg"
               style={{ fontFamily: 'Comic Neue, cursive' }}
             />
-            <p className="text-sm text-gray-500 mt-2" style={{ fontFamily: 'Comic Neue, cursive' }}>
-              Default password: <code className="bg-gray-100 px-2 py-1 rounded">frameGameAdmin2026</code>
-            </p>
           </div>
 
           <motion.button
